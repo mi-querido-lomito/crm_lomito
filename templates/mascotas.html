@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Mascotas</h2>
+
+<form method="POST" class="mb-4">
+    <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
+
+    <select name="especie" class="form-control mb-2">
+        <option value="Perro">Perro</option>
+        <option value="Gato">Gato</option>
+    </select>
+
+    <select name="cliente_id" class="form-control mb-2">
+        {% for c in clientes %}
+        <option value="{{ c.id }}">{{ c.nombre }}</option>
+        {% endfor %}
+    </select>
+
+    <button class="btn btn-success">Agregar Mascota</button>
+</form>
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Especie</th>
+        <th>Dueño</th>
+        <th>Acciones</th>
+    </tr>
+    {% for m in mascotas %}
+    <tr>
+        <td>{{ m.id }}</td>
+        <td>{{ m.nombre }}</td>
+        <td>{{ m.especie }}</td>
+        <td>{{ m.dueno }}</td>
+        <td>
+            <a href="{{ url_for('editar_mascota', id=m.id) }}"
+                class="btn btn-sm btn-warning">
+                ✏ Editar
+            </a>
+</td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

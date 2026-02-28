@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Detalle Venta #{{ venta.id }}</h2>
+
+<p><strong>Fecha:</strong> {{ venta.fecha }}</p>
+<p><strong>Método Pago:</strong> {{ venta.metodo_pago }}</p>
+
+<table class="table table-bordered">
+    <tr>
+        <th>Tipo</th>
+        <th>Nombre</th>
+        <th>Cantidad</th>
+        <th>Subtotal</th>
+    </tr>
+
+    {% for d in detalles %}
+    <tr>
+        <td>{{ d.tipo }}</td>
+        <td>{{ d.nombre }}</td>
+        <td>{{ d.cantidad }}</td>
+        <td>${{ d.subtotal }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h4>Total: ${{ venta.total }}</h4>
+
+<a href="{{ url_for('ticket_html', venta_id=venta.id) }}"
+   class="btn btn-danger">
+   Imprimir Ticket
+</a>
+
+<a href="{{ url_for('generar_ticket', venta_id=venta.id) }}"
+   class="btn btn-secondary">
+   Descargar PDF
+</a>
+
+{% endblock %}

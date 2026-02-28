@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Punto de Venta</h2>
+
+<form method="POST" id="scannerForm">
+    <input type="text" name="codigo_barras"
+           id="scanner"
+           autofocus
+           class="form-control mb-3"
+           placeholder="Escanea producto o servicio">
+</form>
+
+<script>
+document.getElementById("scanner").addEventListener("change", function() {
+    document.getElementById("scannerForm").submit();
+});
+</script>
+
+<form method="POST">
+
+    <label>Tipo:</label>
+    <select name="tipo" class="form-control mb-2">
+        <option value="producto">Producto</option>
+        <option value="servicio">Servicio</option>
+    </select>
+
+    <select name="producto_id" class="form-control mb-2">
+        {% for p in productos %}
+        <option value="{{ p.id }}">
+            {{ p.nombre }} | Stock: {{ p.stock }} | ${{ p.precio }}
+        </option>
+        {% endfor %}
+    </select>
+
+    <select name="servicio_id" class="form-control mb-2">
+        {% for s in servicios %}
+        <option value="{{ s.id }}">
+            {{ s.nombre }} | ${{ s.precio }}
+        </option>
+        {% endfor %}
+    </select>
+
+    <input type="number" name="cantidad" value="1" min="1"
+           class="form-control mb-2">
+
+    <button name="agregar" class="btn btn-primary w-100">
+        Agregar
+    </button>
+
+</form>
+
+<hr>
+
+<h4>Carrito</h4>
+
+<table class="table table-bordered">
+    <tr>
+        <th>#</th>
+        <th>Tipo</th>
+        <th>Nombre</th>
+        <th>Cant.</th>
+        <th>Subtotal</th>
+        <th></th>
+    </tr>
+    {% for item in carrito %}
+    <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ item.tipo }}</td>
+        <td>{{ item.nombre }}</td>
+        <td>{{ item.cantidad }}</td>
+        <td>${{ item.subtotal }}</td>
+        <td>
+            <form method="POST">
+                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                <button name="eliminar" class="btn btn-sm btn-danger">
+                    X
+                </button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h5>Total artículos: {{ carrito | length }}</h5>
+<h4>Total: ${{ carrito | sum(attribute='subtotal') }}</h4>
+
+<form method="POST">
+
+    <label>Método de pago:</label>
+    <select name="metodo_pago" class="form-control mb-2" required>
+        <option value="Efectivo">Efectivo</option>
+        <option value="Transferencia">Transferencia</option>
+        <option value="Tarjeta">Tarjeta</option>
+    </select>
+
+    <button name="finalizar" class="btn btn-success w-100 mb-2">
+        Finalizar Venta
+    </button>
+
+    <button name="vaciar" class="btn btn-warning w-100">
+        Vaciar Carrito
+    </button>
+
+</form>
+{% endblock %}

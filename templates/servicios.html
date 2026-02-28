@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Servicios</h2>
+
+
+<form method="POST" class="mb-4">
+
+    <input name="nombre"
+           placeholder="Nombre del servicio"
+           class="form-control mb-2"
+           required>
+
+    <input type="number" step="0.01"
+           name="precio"
+           placeholder="Precio"
+           class="form-control mb-2"
+           required>
+
+    <textarea name="descripcion"
+              placeholder="Descripción"
+              class="form-control mb-2"></textarea>
+
+    <input name="codigo_barras"
+           placeholder="Código de barras (opcional)"
+           class="form-control mb-2">
+
+    <button class="btn btn-primary w-100">
+        Agregar Servicio
+    </button>
+
+</form>
+{% if session["rol"] == "admin" %}       
+    <a class="btn btn-sm btn-outline-secondary"
+        href="{{ url_for('exportar_servicios') }}">
+        Exportar a Excel
+    </a>
+    {% endif %}
+
+<hr>
+
+<a href="{{ url_for('etiquetas_servicios_carta') }}"
+   class="btn btn-primary mb-3">
+   🖨 Imprimir Etiquetas
+</a>
+
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Precio</th>
+        <th>Código de Barras</th>
+        <th>Acciones</th>
+    </tr>
+
+    {% for s in servicios %}
+    <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.nombre }}</td>
+        <td>${{ s.precio }}</td>
+        <td>{{ s.codigo_barras }}</td>
+        <td>{% if session["rol"] == "admin" %}
+            <a href="{{ url_for('editar_servicio', id=s.id) }}"
+               class="btn btn-sm btn-warning">
+               ✏ Editar
+            </a>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

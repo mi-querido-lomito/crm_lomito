@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Entrada de Mercancía</h2>
+
+<form method="POST">
+
+    <label>Escanear código:</label>
+    <input type="text" name="codigo_barras"
+           autofocus
+           class="form-control mb-2"
+           placeholder="Escanea producto">
+
+    <input type="number" name="cantidad"
+           value="1"
+           min="1"
+           class="form-control mb-2">
+
+    <button class="btn btn-success w-100">
+        Registrar Entrada
+    </button>
+
+</form>
+
+{% endblock %}

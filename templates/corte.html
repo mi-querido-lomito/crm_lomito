@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Corte de Caja</h2>
+
+<p>El corte guarda el total del día actual.</p>
+
+<a href="{{ url_for('corte') }}" class="btn btn-danger">
+    Realizar Corte
+</a>
+
+{% endblock %}
+

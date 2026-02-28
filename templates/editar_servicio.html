@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Servicio</h2>
+
+<form method="POST">
+
+    <label>Nombre:</label>
+    <input name="nombre"
+           value="{{ servicio.nombre }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Precio:</label>
+    <input type="number"
+           step="0.01"
+           name="precio"
+           value="{{ servicio.precio }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Descripción:</label>
+    <textarea name="descripcion"
+              class="form-control mb-2"
+              rows="3">{{ servicio.descripcion }}</textarea>
+
+    <label>Código de Barras:</label>
+    <input name="codigo_barras"
+           value="{{ servicio.codigo_barras }}"
+           class="form-control mb-3">
+
+    <button class="btn btn-success w-100">
+        Guardar Cambios
+    </button>
+
+</form>
+
+{% endblock %}

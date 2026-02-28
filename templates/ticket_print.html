@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+    width: 280px;
+    font-family: monospace;
+}
+hr {
+    border-top: 1px dashed black;
+}
+</style>
+</head>
+<body onload="window.print()">
+
+<center>
+<h4>🐾 Mi Querido Lomito</h4>
+<p>Ticket #{{ venta.id }}</p>
+<p>{{ venta.fecha }}</p>
+</center>
+
+<hr>
+
+{% for d in detalles %}
+<p>
+{{ d.nombre }}
+<br>
+{{ d.cantidad }} x ${{ d.subtotal / d.cantidad }}
+<br>
+Subtotal: ${{ d.subtotal }}
+</p>
+<hr>
+{% endfor %}
+
+<h3>Total: ${{ venta.total }}</h3>
+<p>Método: {{ venta.metodo_pago }}</p>
+
+<hr>
+<center>
+Gracias por su preferencia
+</center>
+
+</body>
+</html>

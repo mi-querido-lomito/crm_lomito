@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if caja_abierta %}
+<div class="alert alert-success">
+    💰 Caja ABIERTA desde {{ caja_abierta.fecha_apertura }}
+    | Monto inicial: ${{ caja_abierta.monto_inicial }}
+</div>
+{% else %}
+<div class="alert alert-danger">
+    🔒 No hay caja abierta
+</div>
+{% endif %}
+
+<h2>Dashboard</h2>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('ventasChart');
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: [{% for v in ventas_7_dias %}"{{ v.dia }}",{% endfor %}],
+        datasets: [{
+            label: 'Ventas',
+            data: [{% for v in ventas_7_dias %}{{ v.total }},{% endfor %}],
+            borderWidth: 1
+        }]
+    }
+});
+</script>
+
+<div class="row mb-4">
+
+    <div class="col-md-3">
+        <div class="card text-center shadow">
+            <div class="card-body">
+                <h5>Clientes</h5>
+                <h3>{{ clientes }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-center shadow">
+            <div class="card-body">
+                <h5>Mascotas</h5>
+                <h3>{{ mascotas }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-center shadow">
+            <div class="card-body">
+                <h5>Productos</h5>
+                <h3>{{ productos }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-center shadow bg-success text-white">
+            <div class="card-body">
+                <h5>Ventas Hoy</h5>
+                <h3>${{ total_hoy }}</h3>
+            </div>
+        </div>
+    </div>
+
+</div>
+<hr>
+
+<h3>Accesos rápidos</h3>
+
+<div class="row mt-3">
+
+    <div class="col-md-3 mb-2">
+        <a href="{{ url_for('ventas') }}"
+           class="btn btn-primary w-100">
+           🛒 Punto de Venta
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-2">
+        <a href="{{ url_for('entrada_inventario') }}"
+           class="btn btn-warning w-100">
+           📦 Entrada Mercancía
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-2">
+        <a href="{{ url_for('abrir_caja') }}"
+           class="btn btn-success w-100">
+           💰 Abrir Caja
+        </a>
+    </div>
+
+    <div class="col-md-3 mb-2">
+        <a href="{{ url_for('cerrar_caja') }}"
+           class="btn btn-danger w-100">
+           🔒 Cerrar Caja
+        </a>
+    </div>
+
+</div>
+
+<h4>Citas Hoy</h4>
+
+<ul>
+{% for r in resumen_citas %}
+<li>{{ r.estado }}: {{ r.total }}</li>
+{% endfor %}
+</ul>
+
+{% if citas_proximas %}
+<div class="alert alert-info mt-3">
+    <strong>🔔 Citas próximas (24h):</strong>
+    <ul>
+    {% for c in citas_proximas %}
+        <li>
+            {{ c.mascota }} - {{ c.fecha }}
+        </li>
+    {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<h4>Ventas últimos 7 días</h4>
+<canvas id="ventasChart"></canvas>
+
+{% if bajo_stock %}
+<div class="alert alert-warning mt-4">
+    <strong>⚠ Productos con bajo stock:</strong>
+    <ul>
+        {% for p in bajo_stock %}
+        <li>{{ p.nombre }} ({{ p.stock }})</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}

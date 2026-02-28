@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Insumo</h2>
+
+<form method="POST">
+
+    <input name="nombre"
+           value="{{ insumo.nombre }}"
+           class="form-control mb-2"
+           placeholder="Nombre"
+           required>
+
+    <input type="number"
+           name="stock"
+           value="{{ insumo.stock }}"
+           class="form-control mb-2"
+           placeholder="Stock"
+           required>
+
+    <input type="number"
+           step="0.01"
+           name="costo"
+           value="{{ insumo.costo }}"
+           class="form-control mb-2"
+           placeholder="Costo"
+           required>
+
+    <input name="proveedor"
+           value="{{ insumo.proveedor }}"
+           class="form-control mb-2"
+           placeholder="Proveedor">
+
+    <input name="codigo_barras"
+           value="{{ insumo.codigo_barras }}"
+           class="form-control mb-3"
+           placeholder="Código de barras">
+
+    <button class="btn btn-success w-100">
+        Guardar Cambios
+    </button>
+
+</form>
+
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Cliente</h2>
+
+<form method="POST">
+
+    <label>Nombre:</label>
+    <input name="nombre"
+           value="{{ cliente.nombre }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Teléfono:</label>
+    <input name="telefono"
+           value="{{ cliente.telefono }}"
+           class="form-control mb-2">
+
+    <label>Email:</label>
+    <input name="email"
+           value="{{ cliente.email }}"
+           class="form-control mb-3">
+
+    <button class="btn btn-success w-100">
+        Guardar Cambios
+    </button>
+
+</form>
+
+{% endblock %}

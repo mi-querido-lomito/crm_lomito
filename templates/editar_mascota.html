@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Mascota</h2>
+
+<form method="POST">
+
+    <label>Nombre:</label>
+    <input name="nombre"
+           value="{{ mascota.nombre }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Especie:</label>
+    <select name="especie" class="form-control mb-2">
+        <option value="Perro"
+            {% if mascota.especie == "Perro" %}selected{% endif %}>
+            Perro
+        </option>
+        <option value="Gato"
+            {% if mascota.especie == "Gato" %}selected{% endif %}>
+            Gato
+        </option>
+    </select>
+
+    <label>Dueño:</label>
+    <select name="cliente_id" class="form-control mb-3">
+        {% for c in clientes %}
+        <option value="{{ c.id }}"
+            {% if c.id == mascota.cliente_id %}selected{% endif %}>
+            {{ c.nombre }}
+        </option>
+        {% endfor %}
+    </select>
+
+    <button class="btn btn-success w-100">
+        Guardar Cambios
+    </button>
+
+</form>
+
+{% endblock %}

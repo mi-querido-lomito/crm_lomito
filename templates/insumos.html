@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Insumos</h2>
+
+
+
+<form method="POST" class="mb-3">
+    <input name="nombre" placeholder="Nombre" class="form-control mb-2" required>
+    <input type="number" name="stock" placeholder="Stock" class="form-control mb-2" required>
+    <input type="number" step="0.01" name="costo" placeholder="Costo" class="form-control mb-2" required>
+    <input name="proveedor" placeholder="Proveedor" class="form-control mb-2">
+    <input name="codigo_barras" placeholder="Código de barras" class="form-control mb-2">
+    <button class="btn btn-success">Agregar Insumo</button>
+</form>
+
+{% if session["rol"] == "admin" %}
+    <a class="btn btn-sm btn-outline-secondary"
+        href="{{ url_for('exportar_insumos') }}">
+        Exportar a Excel
+    </a>
+    {% endif %}
+
+<a href="{{ url_for('etiquetas_insumos_carta') }}"
+   class="btn btn-primary mb-3">
+   🖨 Imprimir Etiquetas
+</a>
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Stock</th>
+        <th>Costo</th>
+        <th>Proveedor</th>
+        <th>Código</th>
+        <th>Acciones</th>
+    </tr>
+
+    {% for i in insumos %}
+    <tr>
+        <td>{{ i.id }}</td>
+        <td>{{ i.nombre }}</td>
+        <td>{{ i.stock }}</td>
+        <td>${{ i.costo }}</td>
+        <td>{{ i.proveedor }}</td>
+        <td>{{ i.codigo_barras }}</td>
+
+        <td>
+            <a href="{{ url_for('editar_insumo', id=i.id) }}"
+               class="btn btn-sm btn-warning">
+               ✏ Editar
+            </a>
+
+            <a href="{{ url_for('eliminar_insumo', id=i.id) }}"
+               class="btn btn-sm btn-danger"
+               onclick="return confirm('¿Eliminar este insumo?')">
+               🗑 Eliminar
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

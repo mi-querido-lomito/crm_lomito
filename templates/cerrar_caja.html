@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Cerrar Caja</h2>
+
+<p>Monto inicial: ${{ caja.monto_inicial }}</p>
+
+<form method="POST">
+
+    <input type="number" step="0.01"
+           name="monto_final"
+           placeholder="Monto contado en caja"
+           required
+           class="form-control mb-2">
+
+    <button class="btn btn-danger w-100">
+        Cerrar Caja
+    </button>
+
+</form>
+
+{% endblock %}
+

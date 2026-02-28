@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Reporte Diario</h2>
+
+{% if data %}
+<p>Total ventas hoy: {{ data.ventas }}</p>
+<p>Total generado: ${{ data.total_dia }}</p>
+{% else %}
+<p>No hay ventas hoy.</p>
+{% endif %}
+
+{% endblock %}

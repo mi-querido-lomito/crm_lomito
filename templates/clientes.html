@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Clientes</h2>
+
+<form method="POST" class="mb-4">
+    <input name="nombre" placeholder="Nombre" class="form-control mb-2" required>
+    <input name="telefono" placeholder="Teléfono" class="form-control mb-2">
+    <input name="email" placeholder="Email" class="form-control mb-2">
+    <button class="btn btn-success">Agregar Cliente</button>
+</form>
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Teléfono</th>
+        <th>Email</th>
+        <th>Acciones</th>
+    </tr>
+    {% for c in clientes %}
+    <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.nombre }}</td>
+        <td>{{ c.telefono }}</td>
+        <td>{{ c.email }}</td>
+        <td>
+            <a href="{{ url_for('editar_cliente', id=c.id) }}"
+                class="btn btn-sm btn-warning">
+                ✏ Editar
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<a href="{{ url_for('export_clientes_pdf') }}" class="btn btn-primary">Exportar a PDF</a>
+
+{% endblock %}

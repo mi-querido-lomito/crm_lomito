@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Gastos Fijos</h2>
+
+<form method="POST" class="mb-3">
+
+<input name="concepto" placeholder="Concepto" class="form-control mb-2" required>
+<input type="number" step="0.01" name="monto" placeholder="Monto" class="form-control mb-2" required>
+<input type="date" name="fecha" class="form-control mb-2" required>
+<textarea name="descripcion" placeholder="Descripción" class="form-control mb-2"></textarea>
+
+<button class="btn btn-danger">Registrar Gasto</button>
+
+</form>
+
+<table class="table table-bordered">
+<tr>
+<th>Concepto</th>
+<th>Monto</th>
+<th>Fecha</th>
+</tr>
+
+{% for g in gastos %}
+<tr>
+<td>{{ g.concepto }}</td>
+<td>${{ g.monto }}</td>
+<td>{{ g.fecha }}</td>
+</tr>
+{% endfor %}
+</table>
+
+{% endblock %}

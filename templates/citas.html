@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Citas</h2>
+
+<form method="POST" class="mb-4">
+    <select name="mascota_id" class="form-control mb-2">
+        {% for m in mascotas %}
+        <option value="{{ m.id }}">{{ m.nombre }}</option>
+        {% endfor %}
+    </select>
+
+    <input type="datetime-local" name="fecha" class="form-control mb-2" required>
+
+    <button class="btn btn-success">Agendar Cita</button>
+</form>
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Mascota</th>
+        <th>Fecha</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+    </tr>
+    {% for c in citas %}
+    <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.mascota }}</td>
+        <td>{{ c.fecha }}</td>
+        <td>{{ c.estado }}</td>
+        <td>
+            <a href="{{ url_for('editar_cita', id=c.id) }}"
+                class="btn btn-sm btn-warning">
+                Editar
+            </a>
+            
+            <a href="{{ url_for('cancelar_cita', id=c.id) }}"
+                class="btn btn-sm btn-danger"
+                onclick="return confirm('¿Cancelar esta cita?')">
+                Cancelar
+            </a>
+
+            <a href="{{ url_for('convertir_cita', id=c.id) }}"
+                class="btn btn-sm btn-success">
+                Completar y Cobrar
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}
