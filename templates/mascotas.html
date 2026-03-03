@@ -37,9 +37,15 @@
         <td>
             <a href="{{ url_for('editar_mascota', id=m.id) }}"
                 class="btn btn-sm btn-warning">
-                ✏ Editar
+                Editar
             </a>
-</td>
+            
+            <a href="{{ url_for('eliminar_mascota', id=m.id) }}"
+                class="btn btn-sm btn-danger"
+                onclick="return confirm('¿Eliminar mascota?')">
+                Eliminar ❌
+            </a>
+        </td>
     </tr>
     {% endfor %}
 </table>
