@@ -33,6 +33,8 @@ new Chart(ctx, {
 
 <div class="row mb-4">
 
+    {% if session["rol"] == "admin" %}
+
     <div class="col-md-3">
         <div class="card text-center shadow">
             <div class="card-body">
@@ -50,7 +52,7 @@ new Chart(ctx, {
             </div>
         </div>
     </div>
-
+    
     <div class="col-md-3">
         <div class="card text-center shadow">
             <div class="card-body">
@@ -68,6 +70,7 @@ new Chart(ctx, {
             </div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 <hr>
