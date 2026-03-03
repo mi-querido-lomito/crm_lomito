@@ -259,6 +259,21 @@ def editar_cliente(id):
     cursor.close()
     return render_template("editar_cliente.html", cliente=cliente)
 
+# Botón de ELIMINAR CLIENTE
+# -------------------  
+@app.route("/eliminar_cliente/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def eliminar_cliente(id):
+
+    cursor = mysql.connection.cursor()
+    cursor.execute("DELETE FROM clientes WHERE id=%s", (id,))
+    mysql.connection.commit()
+    cursor.close()
+
+    flash("Cliente eliminado correctamente")
+    return redirect(url_for("clientes"))
+
 # -------------------
 # EXPORTAR CLIENTES A PDF  
 @app.route("/clientes/pdf")
@@ -356,6 +371,22 @@ def editar_mascota(id):
     return render_template("editar_mascota.html",
                            mascota=mascota,
                            clientes=clientes)
+
+# ELIMINAR MASCOTA
+# -------------------
+@app.route("/eliminar_mascota/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def eliminar_mascota(id):
+
+    cursor = mysql.connection.cursor()
+    cursor.execute("DELETE FROM mascotas WHERE id=%s", (id,))
+    mysql.connection.commit()
+    cursor.close()
+
+    flash("Mascota eliminada correctamente")
+    return redirect(url_for("mascotas"))
+
 
 # -------------------
 # PRODUCTOS
@@ -673,74 +704,53 @@ def ventas():
     if "carrito" not in session:
         session["carrito"] = []
 
-    # -------------------
+
     # AGREGAR AL CARRITO
     # -------------------
     if request.method == "POST" and "agregar" in request.form:
 
-        codigo = request.form.get("codigo_barras")
-        if codigo:
-            # buscar primero en productos
-            cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
-            item = cursor.fetchone()
+    codigo = request.form.get("codigo_barras")
+    cantidad = int(request.form.get("cantidad", 1))
 
-            if item:
-                tipo = "producto"
-            else:
-                cursor.execute("SELECT * FROM servicios WHERE codigo_barras=%s", (codigo,))
-                item = cursor.fetchone()
-                if item:
-                    tipo = "servicio"
-                else:
-                    flash("Código no encontrado")
-                    return redirect(url_for("ventas"))
+    item = None
+    tipo = None
 
-            cantidad = 1
+    # Buscar en productos
+    cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
+    item = cursor.fetchone()
 
-        tipo = request.form.get("tipo")
-        cantidad = int(request.form.get("cantidad", 1))
+    if item:
+        tipo = "producto"
 
-        if tipo == "producto":
-            item_id = request.form.get("producto_id")
-            cursor.execute("SELECT * FROM productos WHERE id=%s", (item_id,))
-            item = cursor.fetchone()
-
-            if not item:
-                flash("Producto no encontrado")
-                return redirect(url_for("ventas"))
-
-            if item["stock"] < cantidad:
-                flash("Stock insuficiente")
-                return redirect(url_for("ventas"))
-
-        elif tipo == "servicio":
-            item_id = request.form.get("servicio_id")
-            cursor.execute("SELECT * FROM servicios WHERE id=%s", (item_id,))
-            item = cursor.fetchone()
-
-            if not item:
-                flash("Servicio no encontrado")
-                return redirect(url_for("ventas"))
-
-        else:
-            flash("Tipo inválido")
+        if item["stock"] < cantidad:
+            flash("Stock insuficiente")
             return redirect(url_for("ventas"))
 
-        carrito_item = {
-            "tipo": tipo,
-            "id": item["id"],
-            "nombre": item["nombre"],
-            "precio": float(item["precio"]),
-            "cantidad": cantidad,
-            "subtotal": float(item["precio"]) * cantidad
-        }
+    else:
+        # Buscar en servicios
+        cursor.execute("SELECT * FROM servicios WHERE codigo_barras=%s", (codigo,))
+        item = cursor.fetchone()
 
-        session["carrito"].append(carrito_item)
-        session.modified = True
+        if item:
+            tipo = "servicio"
+        else:
+            flash("Código no encontrado")
+            return redirect(url_for("ventas"))
 
-        return redirect(url_for("ventas"))
+    carrito_item = {
+        "tipo": tipo,
+        "id": item["id"],
+        "nombre": item["nombre"],
+        "precio": float(item["precio"]),
+        "cantidad": cantidad,
+        "subtotal": float(item["precio"]) * cantidad
+    }
 
-    # -------------------
+    session["carrito"].append(carrito_item)
+    session.modified = True
+
+    return redirect(url_for("ventas"))
+
     # ELIMINAR ITEM
     # -------------------
     if request.method == "POST" and "eliminar" in request.form:
@@ -751,7 +761,6 @@ def ventas():
 
         return redirect(url_for("ventas"))
 
-    # -------------------
     # VACIAR CARRITO
     # -------------------
     if request.method == "POST" and "vaciar" in request.form:
@@ -761,7 +770,6 @@ def ventas():
 
         return redirect(url_for("ventas"))
 
-    # -------------------
     # FINALIZAR VENTA
     # -------------------
     if request.method == "POST" and "finalizar" in request.form:
@@ -775,9 +783,11 @@ def ventas():
         metodo_pago = request.form.get("metodo_pago")
         total = sum(item["subtotal"] for item in carrito)
 
+        cliente_id = request.form.get("cliente_id")
+
         cursor.execute(
-            "INSERT INTO ventas (total, metodo_pago) VALUES (%s, %s)",
-            (total, metodo_pago)
+            "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
+            (total, metodo_pago, cliente_id if cliente_id else None)
         )
         mysql.connection.commit()
         venta_id = cursor.lastrowid
@@ -827,9 +837,12 @@ def ventas():
 
         return redirect(url_for("ticket_html", venta_id=venta_id))
 
-    # -------------------
+
     # CARGAR DATOS
     # -------------------
+    cursor.execute("SELECT * FROM clientes")
+    clientes = cursor.fetchall()
+
     cursor.execute("SELECT * FROM productos")
     productos = cursor.fetchall()
 
@@ -842,6 +855,7 @@ def ventas():
         "ventas.html",
         productos=productos,
         servicios=servicios,
+        clientes=clientes,
         carrito=session.get("carrito", [])
     )
 
@@ -1088,36 +1102,42 @@ def cerrar_caja():
 
     if request.method == "POST":
 
-        monto_final = float(request.form.get("monto_final"))
+        try:
+            monto_final = float(request.form.get("monto_final"))
 
-        cursor.execute("""
-            SELECT IFNULL(SUM(total),0) as total_ventas
-            FROM ventas
-            WHERE fecha >= %s
-            AND estado='activa'
-        """, (caja["fecha_apertura"],))
+            cursor.execute("""
+                SELECT IFNULL(SUM(total),0) as total_ventas
+                FROM ventas
+                WHERE estado='activa'
+                AND fecha BETWEEN %s AND NOW()
+            """, (caja["fecha_apertura"],))
 
-        total_ventas = cursor.fetchone()["total_ventas"]
+            resultado = cursor.fetchone()
+            total_ventas = resultado["total_ventas"] if resultado else 0
 
-        diferencia = monto_final - (caja["monto_inicial"] + total_ventas)
+            diferencia = monto_final - (float(caja["monto_inicial"]) + float(total_ventas))
 
-        cursor.execute("""
-            UPDATE caja
-            SET fecha_cierre=NOW(),
-                monto_final=%s,
-                diferencia=%s,
-                estado='cerrada'
-            WHERE id=%s
-        """, (monto_final, diferencia, caja["id"]))
+            cursor.execute("""
+                UPDATE caja
+                SET fecha_cierre=NOW(),
+                    monto_final=%s,
+                    diferencia=%s,
+                    estado='cerrada'
+                WHERE id=%s
+            """, (monto_final, diferencia, caja["id"]))
 
-        mysql.connection.commit()
+            mysql.connection.commit()
 
-        flash(f"Caja cerrada. Diferencia: ${diferencia}")
+            flash(f"Caja cerrada correctamente. Diferencia: ${diferencia}")
+
+        except Exception as e:
+            mysql.connection.rollback()
+            flash(f"Error al cerrar caja: {str(e)}")
+
         return redirect(url_for("dashboard"))
 
     cursor.close()
     return render_template("cerrar_caja.html", caja=caja)
-
 
 # -------------------
 # LISTA DE VENTAS
@@ -1287,6 +1307,22 @@ def editar_servicio(id):
 
     cursor.close()
     return render_template("editar_servicio.html", servicio=servicio)
+
+
+# ELIMINAR SERVICIO
+# -------------------
+@app.route("/eliminar_servicio/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def eliminar_servicio(id):
+
+    cursor = mysql.connection.cursor()
+    cursor.execute("DELETE FROM servicios WHERE id=%s", (id,))
+    mysql.connection.commit()
+    cursor.close()
+
+    flash("Servicio eliminado correctamente")
+    return redirect(url_for("servicios"))
 
 # EXPORTAR SERVICIO A EXCEL
 # -------------------
@@ -1633,3 +1669,4 @@ def gastos():
 # -------------------FINAL DE APP-------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3306)
+
