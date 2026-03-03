@@ -226,25 +226,40 @@ def dashboard():
 @app.route("/clientes", methods=["GET", "POST"])
 @login_required
 def clientes():
+
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     if request.method == "POST":
-        nombre = request.form["nombre"]
-        telefono = request.form["telefono"]
-        email = request.form["email"]
 
-        cursor.execute("INSERT INTO clientes (nombre, telefono, email) VALUES (%s,%s,%s)",
-                       (nombre, telefono, email))
+        nombre = request.form.get("nombre")
+        telefono = request.form.get("telefono")
+        email = request.form.get("email")
+
+        if not nombre:
+            flash("El nombre es obligatorio")
+            return redirect(url_for("clientes"))
+
+        cursor.execute("""
+            INSERT INTO clientes (nombre, telefono, email)
+            VALUES (%s, %s, %s)
+        """, (nombre, telefono, email))
+
         mysql.connection.commit()
+        flash("Cliente agregado correctamente")
 
-    cursor.execute("SELECT * FROM clientes")
+        return redirect(url_for("clientes"))
+
+    cursor.execute("SELECT * FROM clientes ORDER BY id DESC")
     data = cursor.fetchall()
     cursor.close()
 
     return render_template("clientes.html", clientes=data)
 
+
 # -------------------
 # EDITAR CLIENTE
+# -------------------
+
 @app.route("/editar_cliente/<int:id>", methods=["GET", "POST"])
 @login_required
 def editar_cliente(id):
@@ -255,14 +270,15 @@ def editar_cliente(id):
     cliente = cursor.fetchone()
 
     if not cliente:
+        cursor.close()
         flash("Cliente no encontrado")
         return redirect(url_for("clientes"))
 
     if request.method == "POST":
 
-        nombre = request.form["nombre"]
-        telefono = request.form["telefono"]
-        email = request.form["email"]
+        nombre = request.form.get("nombre")
+        telefono = request.form.get("telefono")
+        email = request.form.get("email")
 
         cursor.execute("""
             UPDATE clientes
@@ -273,20 +289,35 @@ def editar_cliente(id):
         """, (nombre, telefono, email, id))
 
         mysql.connection.commit()
+        cursor.close()
+
         flash("Cliente actualizado correctamente")
         return redirect(url_for("clientes"))
 
     cursor.close()
     return render_template("editar_cliente.html", cliente=cliente)
 
-# Botón de ELIMINAR CLIENTE
-# -------------------  
+
+# -------------------
+# ELIMINAR CLIENTE (SOLO ADMIN)
+# -------------------
+
 @app.route("/eliminar_cliente/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_cliente(id):
 
-    cursor = mysql.connection.cursor()
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    # Verificar si tiene mascotas asociadas
+    cursor.execute("SELECT COUNT(*) as total FROM mascotas WHERE cliente_id=%s", (id,))
+    mascotas = cursor.fetchone()["total"]
+
+    if mascotas > 0:
+        cursor.close()
+        flash("No puedes eliminar un cliente con mascotas registradas")
+        return redirect(url_for("clientes"))
+
     cursor.execute("DELETE FROM clientes WHERE id=%s", (id,))
     mysql.connection.commit()
     cursor.close()
@@ -294,22 +325,34 @@ def eliminar_cliente(id):
     flash("Cliente eliminado correctamente")
     return redirect(url_for("clientes"))
 
+
 # -------------------
-# EXPORTAR CLIENTES A PDF  
+# EXPORTAR CLIENTES A PDF (SOLO ADMIN)
+# -------------------
+
 @app.route("/clientes/pdf")
 @login_required
+@rol_requerido(["admin"])
 def export_clientes_pdf():
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer)
     elements = []
+    styles = getSampleStyleSheet()
 
-    cursor = mysql.connection.cursor()
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT nombre, telefono, email FROM clientes")
     data = cursor.fetchall()
     cursor.close()
 
-    table_data = [("Nombre", "Teléfono", "Email")]
-    table_data.extend(data)
+    table_data = [["Nombre", "Teléfono", "Email"]]
+
+    for c in data:
+        table_data.append([
+            c["nombre"],
+            c["telefono"] if c["telefono"] else "",
+            c["email"] if c["email"] else ""
+        ])
 
     table = Table(table_data)
     elements.append(table)
@@ -317,9 +360,12 @@ def export_clientes_pdf():
     doc.build(elements)
     buffer.seek(0)
 
-    return send_file(buffer, as_attachment=True,
-                     download_name="clientes.pdf",
-                     mimetype='application/pdf')
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="clientes.pdf",
+        mimetype="application/pdf"
+    )
 
 # -------------------
 # MASCOTAS
