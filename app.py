@@ -705,17 +705,19 @@ def ventas():
         session["carrito"] = []
 
 
-    # AGREGAR AL CARRITO
     # -------------------
-    if request.method == "POST" and "agregar" in request.form:
+# AGREGAR AL CARRITO
+# -------------------
+if request.method == "POST" and "agregar" in request.form:
 
     codigo = request.form.get("codigo_barras")
     cantidad = int(request.form.get("cantidad", 1))
 
-    item = None
-    tipo = None
+    if not codigo:
+        flash("Código no proporcionado")
+        return redirect(url_for("ventas"))
 
-    # Buscar en productos
+    # Buscar primero en productos
     cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
     item = cursor.fetchone()
 
