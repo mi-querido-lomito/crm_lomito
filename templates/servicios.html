@@ -3,7 +3,6 @@
 
 <h2>Servicios</h2>
 
-
 <form method="POST" class="mb-4">
 
     <input name="nombre"
@@ -30,45 +29,66 @@
     </button>
 
 </form>
-{% if session["rol"] == "admin" %}       
-    <a class="btn btn-sm btn-outline-secondary"
-        href="{{ url_for('exportar_servicios') }}">
-        Exportar a Excel
-    </a>
-    {% endif %}
+
+{% if session["rol"] == "admin" %}
+
+    <div class="mb-3 d-flex gap-2">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('exportar_servicios') }}">
+           📊 Exportar a Excel
+        </a>
+
+        <a href="{{ url_for('etiquetas_servicios_carta') }}"
+           class="btn btn-sm btn-primary">
+           🖨 Imprimir Etiquetas
+        </a>
+    </div>
+
+{% endif %}
 
 <hr>
 
-<a href="{{ url_for('etiquetas_servicios_carta') }}"
-   class="btn btn-primary mb-3">
-   🖨 Imprimir Etiquetas
-</a>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Precio</th>
+            <th>Código de Barras</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
 
-
-<table class="table table-bordered">
-    <tr>
-        <th>ID</th>
-        <th>Nombre</th>
-        <th>Precio</th>
-        <th>Código de Barras</th>
-        <th>Acciones</th>
-    </tr>
-
+    <tbody>
     {% for s in servicios %}
     <tr>
         <td>{{ s.id }}</td>
         <td>{{ s.nombre }}</td>
-        <td>${{ s.precio }}</td>
-        <td>{{ s.codigo_barras }}</td>
-        <td>{% if session["rol"] == "admin" %}
-            <a href="{{ url_for('editar_servicio', id=s.id) }}"
-               class="btn btn-sm btn-warning">
-               ✏ Editar
-            </a>
+        <td>${{ "%.2f"|format(s.precio) }}</td>
+        <td>{{ s.codigo_barras or "-" }}</td>
+        <td>
+
+            {% if session["rol"] == "admin" %}
+
+                <a href="{{ url_for('editar_servicio', id=s.id) }}"
+                   class="btn btn-sm btn-warning">
+                   ✏ Editar
+                </a>
+
+                <a href="{{ url_for('eliminar_servicio', id=s.id) }}"
+                   class="btn btn-sm btn-danger"
+                   onclick="return confirm('¿Estás seguro de eliminar este servicio? Esta acción no se puede deshacer.')">
+                   🗑 Eliminar
+                </a>
+
+            {% else %}
+                <span class="text-muted">Sin permisos</span>
             {% endif %}
+
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 {% endblock %}
