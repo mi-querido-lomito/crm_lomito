@@ -704,57 +704,57 @@ def ventas():
     if "carrito" not in session:
         session["carrito"] = []
 
+    # ==========================
+    # AGREGAR AL CARRITO
+    # ==========================
+    if request.method == "POST" and "agregar" in request.form:
 
-    # -------------------
-# AGREGAR AL CARRITO
-# -------------------
-if request.method == "POST" and "agregar" in request.form:
+        codigo = request.form.get("codigo_barras")
+        cantidad = int(request.form.get("cantidad", 1))
 
-    codigo = request.form.get("codigo_barras")
-    cantidad = int(request.form.get("cantidad", 1))
-
-    if not codigo:
-        flash("Código no proporcionado")
-        return redirect(url_for("ventas"))
-
-    # Buscar primero en productos
-    cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
-    item = cursor.fetchone()
-
-    if item:
-        tipo = "producto"
-
-        if item["stock"] < cantidad:
-            flash("Stock insuficiente")
+        if not codigo:
+            flash("Código no proporcionado")
             return redirect(url_for("ventas"))
 
-    else:
-        # Buscar en servicios
-        cursor.execute("SELECT * FROM servicios WHERE codigo_barras=%s", (codigo,))
+        # Buscar en productos
+        cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
         item = cursor.fetchone()
 
         if item:
-            tipo = "servicio"
+            tipo = "producto"
+
+            if item["stock"] < cantidad:
+                flash("Stock insuficiente")
+                return redirect(url_for("ventas"))
+
         else:
-            flash("Código no encontrado")
-            return redirect(url_for("ventas"))
+            # Buscar en servicios
+            cursor.execute("SELECT * FROM servicios WHERE codigo_barras=%s", (codigo,))
+            item = cursor.fetchone()
 
-    carrito_item = {
-        "tipo": tipo,
-        "id": item["id"],
-        "nombre": item["nombre"],
-        "precio": float(item["precio"]),
-        "cantidad": cantidad,
-        "subtotal": float(item["precio"]) * cantidad
-    }
+            if item:
+                tipo = "servicio"
+            else:
+                flash("Código no encontrado")
+                return redirect(url_for("ventas"))
 
-    session["carrito"].append(carrito_item)
-    session.modified = True
+        carrito_item = {
+            "tipo": tipo,
+            "id": item["id"],
+            "nombre": item["nombre"],
+            "precio": float(item["precio"]),
+            "cantidad": cantidad,
+            "subtotal": float(item["precio"]) * cantidad
+        }
 
-    return redirect(url_for("ventas"))
+        session["carrito"].append(carrito_item)
+        session.modified = True
 
+        return redirect(url_for("ventas"))
+
+    # ==========================
     # ELIMINAR ITEM
-    # -------------------
+    # ==========================
     if request.method == "POST" and "eliminar" in request.form:
 
         index = int(request.form.get("index"))
@@ -763,8 +763,9 @@ if request.method == "POST" and "agregar" in request.form:
 
         return redirect(url_for("ventas"))
 
+    # ==========================
     # VACIAR CARRITO
-    # -------------------
+    # ==========================
     if request.method == "POST" and "vaciar" in request.form:
 
         session["carrito"] = []
@@ -772,76 +773,78 @@ if request.method == "POST" and "agregar" in request.form:
 
         return redirect(url_for("ventas"))
 
+    # ==========================
     # FINALIZAR VENTA
-    # -------------------
+    # ==========================
     if request.method == "POST" and "finalizar" in request.form:
 
-    carrito = session.get("carrito", [])
+        carrito = session.get("carrito", [])
 
-    if not carrito:
-        flash("Carrito vacío")
-        return redirect(url_for("ventas"))
+        if not carrito:
+            flash("Carrito vacío")
+            return redirect(url_for("ventas"))
 
-    metodo_pago = request.form.get("metodo_pago")
-    cliente_id = request.form.get("cliente_id")
+        metodo_pago = request.form.get("metodo_pago")
+        cliente_id = request.form.get("cliente_id")
 
-    total = sum(item["subtotal"] for item in carrito)
+        total = sum(item["subtotal"] for item in carrito)
 
-    cursor.execute(
-        "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
-        (total, metodo_pago, cliente_id if cliente_id else None)
-    )
+        cursor.execute(
+            "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
+            (total, metodo_pago, cliente_id if cliente_id else None)
+        )
 
-    mysql.connection.commit()
-    venta_id = cursor.lastrowid
+        mysql.connection.commit()
+        venta_id = cursor.lastrowid
 
-    for item in carrito:
+        for item in carrito:
 
-        if item["tipo"] == "producto":
+            if item["tipo"] == "producto":
 
-            cursor.execute("""
-                INSERT INTO detalle_venta
-                (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                VALUES (%s, %s, %s, NULL, %s, %s, %s)
-            """, (
-                venta_id,
-                "producto",
-                item["id"],
-                item["cantidad"],
-                item["precio"],
-                item["subtotal"]
-            ))
+                cursor.execute("""
+                    INSERT INTO detalle_venta
+                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
+                    VALUES (%s, %s, %s, NULL, %s, %s, %s)
+                """, (
+                    venta_id,
+                    "producto",
+                    item["id"],
+                    item["cantidad"],
+                    item["precio"],
+                    item["subtotal"]
+                ))
 
-            cursor.execute("""
-                UPDATE productos
-                SET stock = stock - %s
-                WHERE id = %s
-            """, (item["cantidad"], item["id"]))
+                cursor.execute("""
+                    UPDATE productos
+                    SET stock = stock - %s
+                    WHERE id = %s
+                """, (item["cantidad"], item["id"]))
 
-        elif item["tipo"] == "servicio":
+            elif item["tipo"] == "servicio":
 
-            cursor.execute("""
-                INSERT INTO detalle_venta
-                (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                VALUES (%s, %s, NULL, %s, %s, %s, %s)
-            """, (
-                venta_id,
-                "servicio",
-                item["id"],
-                item["cantidad"],
-                item["precio"],
-                item["subtotal"]
-            ))
+                cursor.execute("""
+                    INSERT INTO detalle_venta
+                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
+                    VALUES (%s, %s, NULL, %s, %s, %s, %s)
+                """, (
+                    venta_id,
+                    "servicio",
+                    item["id"],
+                    item["cantidad"],
+                    item["precio"],
+                    item["subtotal"]
+                ))
 
-    mysql.connection.commit()
+        mysql.connection.commit()
 
-    session["carrito"] = []
-    flash("Venta completada correctamente")
+        session["carrito"] = []
+        flash("Venta completada correctamente")
 
-    return redirect(url_for("ticket_html", venta_id=venta_id))
+        return redirect(url_for("ticket_html", venta_id=venta_id))
 
+    # ==========================
     # CARGAR DATOS
-    # -------------------
+    # ==========================
     cursor.execute("SELECT * FROM productos")
     productos = cursor.fetchall()
 
