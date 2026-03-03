@@ -19,12 +19,20 @@ document.getElementById("scanner").addEventListener("change", function() {
 
 <form method="POST">
 
+    <select name="cliente_id" class="form-control mb-2">
+        <option value="">Venta sin cliente</option>
+        {% for c in clientes %}
+            <option value="{{ c.id }}">{{ c.nombre }}</option>
+        {% endfor %}
+    </select>
+
     <label>Tipo:</label>
     <select name="tipo" class="form-control mb-2">
         <option value="producto">Producto</option>
         <option value="servicio">Servicio</option>
     </select>
 
+    <label>Escoge producto:</label>
     <select name="producto_id" class="form-control mb-2">
         {% for p in productos %}
         <option value="{{ p.id }}">
@@ -33,6 +41,7 @@ document.getElementById("scanner").addEventListener("change", function() {
         {% endfor %}
     </select>
 
+    <label>Escoge servicio:</label>
     <select name="servicio_id" class="form-control mb-2">
         {% for s in servicios %}
         <option value="{{ s.id }}">
