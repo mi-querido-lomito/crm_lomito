@@ -25,10 +25,16 @@
         <td>{{ c.telefono }}</td>
         <td>{{ c.email }}</td>
         <td>
+            
             <a href="{{ url_for('editar_cliente', id=c.id) }}"
                 class="btn btn-sm btn-warning">
                 ✏ Editar
             </a>
+            <a href="{{ url_for('eliminar_cliente', id=c.id) }}"
+               class="btn btn-sm btn-danger"
+               onclick="return confirm('¿Eliminar cliente?')">
+            </a>
+        
         </td>
     </tr>
     {% endfor %}
