@@ -116,10 +116,10 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
 # -------------------
 # DASHBOARD
 # -------------------
-
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -128,44 +128,61 @@ def dashboard():
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    # Totales generales
-    cursor.execute("SELECT COUNT(*) as total FROM clientes")
-    clientes = cursor.fetchone()["total"]
+    rol = session.get("rol")
 
-    cursor.execute("SELECT COUNT(*) as total FROM mascotas")
-    mascotas = cursor.fetchone()["total"]
+    # ==========================
+    # MÉTRICAS SOLO ADMIN
+    # ==========================
+    if rol == "admin":
+
+        cursor.execute("SELECT COUNT(*) as total FROM clientes")
+        clientes = cursor.fetchone()["total"]
+
+        cursor.execute("SELECT COUNT(*) as total FROM mascotas")
+        mascotas = cursor.fetchone()["total"]
+
+        # Ventas hoy
+        cursor.execute("""
+            SELECT IFNULL(SUM(total),0) as total_hoy
+            FROM ventas
+            WHERE DATE(fecha)=CURDATE()
+            AND estado='activa'
+        """)
+        total_hoy = cursor.fetchone()["total_hoy"]
+
+        # Ventas últimos 7 días
+        cursor.execute("""
+            SELECT DATE(fecha) as dia, SUM(total) as total
+            FROM ventas
+            WHERE fecha >= CURDATE() - INTERVAL 7 DAY
+            AND estado='activa'
+            GROUP BY DATE(fecha)
+            ORDER BY dia
+        """)
+        ventas_7_dias = cursor.fetchall()
+
+    else:
+        # Empleado no necesita estas métricas
+        clientes = None
+        mascotas = None
+        total_hoy = None
+        ventas_7_dias = []
+
+    # ==========================
+    # MÉTRICAS GENERALES (TODOS)
+    # ==========================
 
     cursor.execute("SELECT COUNT(*) as total FROM productos")
     productos = cursor.fetchone()["total"]
 
-    # Ventas hoy
-    cursor.execute("""
-        SELECT IFNULL(SUM(total),0) as total_hoy
-        FROM ventas
-        WHERE DATE(fecha)=CURDATE()
-        AND estado='activa'
-    """)
-    total_hoy = cursor.fetchone()["total_hoy"]
-
-    #Citas de hoy
+    # Citas de hoy
     cursor.execute("""
         SELECT estado, COUNT(*) as total
         FROM citas
-        WHERE fecha = CURDATE()
+        WHERE DATE(fecha) = CURDATE()
         GROUP BY estado
     """)
     resumen_citas = cursor.fetchall()
-
-    # Ventas últimos 7 días
-    cursor.execute("""
-        SELECT DATE(fecha) as dia, SUM(total) as total
-        FROM ventas
-        WHERE fecha >= CURDATE() - INTERVAL 7 DAY
-        AND estado='activa'
-        GROUP BY DATE(fecha)
-        ORDER BY dia
-    """)
-    ventas_7_dias = cursor.fetchall()
 
     # Inventario bajo
     cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 5")
@@ -175,6 +192,7 @@ def dashboard():
     cursor.execute("SELECT * FROM caja WHERE estado='abierta'")
     caja_abierta = cursor.fetchone()
 
+    # Citas próximas
     cursor.execute("""
         SELECT c.id, c.fecha, m.nombre as mascota
         FROM citas c
@@ -199,6 +217,8 @@ def dashboard():
         caja_abierta=caja_abierta,
         citas_proximas=citas_proximas
     )
+
+
 # -------------------
 # CLIENTES
 # -------------------
