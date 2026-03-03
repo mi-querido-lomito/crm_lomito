@@ -774,80 +774,80 @@ def ventas():
     # -------------------
     if request.method == "POST" and "finalizar" in request.form:
 
-        carrito = session.get("carrito", [])
+    carrito = session.get("carrito", [])
 
-        if not carrito:
-            flash("Carrito vacío")
-            return redirect(url_for("ventas"))
+    if not carrito:
+        flash("Carrito vacío")
+        return redirect(url_for("ventas"))
 
-        metodo_pago = request.form.get("metodo_pago")
-        total = sum(item["subtotal"] for item in carrito)
+    metodo_pago = request.form.get("metodo_pago")
+    cliente_id = request.form.get("cliente_id")
 
-        cliente_id = request.form.get("cliente_id")
+    total = sum(item["subtotal"] for item in carrito)
 
-        cursor.execute(
-            "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
-            (total, metodo_pago, cliente_id if cliente_id else None)
-        )
-        mysql.connection.commit()
-        venta_id = cursor.lastrowid
+    cursor.execute(
+        "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
+        (total, metodo_pago, cliente_id if cliente_id else None)
+    )
 
-        for item in carrito:
+    mysql.connection.commit()
+    venta_id = cursor.lastrowid
 
-            if item["tipo"] == "producto":
+    for item in carrito:
 
-                cursor.execute("""
-                    INSERT INTO detalle_venta
-                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                    VALUES (%s, %s, %s, NULL, %s, %s, %s)
-                """, (
-                    venta_id,
-                    "producto",
-                    item["id"],
-                    item["cantidad"],
-                    item["precio"],
-                    item["subtotal"]
-                ))
+        if item["tipo"] == "producto":
 
-                cursor.execute("""
-                    UPDATE productos
-                    SET stock = stock - %s
-                    WHERE id = %s
-                """, (item["cantidad"], item["id"]))
+            cursor.execute("""
+                INSERT INTO detalle_venta
+                (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
+                VALUES (%s, %s, %s, NULL, %s, %s, %s)
+            """, (
+                venta_id,
+                "producto",
+                item["id"],
+                item["cantidad"],
+                item["precio"],
+                item["subtotal"]
+            ))
 
-            elif item["tipo"] == "servicio":
+            cursor.execute("""
+                UPDATE productos
+                SET stock = stock - %s
+                WHERE id = %s
+            """, (item["cantidad"], item["id"]))
 
-                cursor.execute("""
-                    INSERT INTO detalle_venta
-                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                    VALUES (%s, %s, NULL, %s, %s, %s, %s)
-                """, (
-                    venta_id,
-                    "servicio",
-                    item["id"],
-                    item["cantidad"],
-                    item["precio"],
-                    item["subtotal"]
-                ))
+        elif item["tipo"] == "servicio":
 
-        mysql.connection.commit()
+            cursor.execute("""
+                INSERT INTO detalle_venta
+                (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
+                VALUES (%s, %s, NULL, %s, %s, %s, %s)
+            """, (
+                venta_id,
+                "servicio",
+                item["id"],
+                item["cantidad"],
+                item["precio"],
+                item["subtotal"]
+            ))
 
-        session["carrito"] = []
-        flash("Venta completada correctamente")
+    mysql.connection.commit()
 
-        return redirect(url_for("ticket_html", venta_id=venta_id))
+    session["carrito"] = []
+    flash("Venta completada correctamente")
 
+    return redirect(url_for("ticket_html", venta_id=venta_id))
 
     # CARGAR DATOS
     # -------------------
-    cursor.execute("SELECT * FROM clientes")
-    clientes = cursor.fetchall()
-
     cursor.execute("SELECT * FROM productos")
     productos = cursor.fetchall()
 
     cursor.execute("SELECT * FROM servicios")
     servicios = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM clientes")
+    clientes = cursor.fetchall()
 
     cursor.close()
 
@@ -1093,6 +1093,7 @@ def cerrar_caja():
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
+    # Buscar caja abierta
     cursor.execute("SELECT * FROM caja WHERE estado='abierta'")
     caja = cursor.fetchone()
 
@@ -1105,6 +1106,7 @@ def cerrar_caja():
         try:
             monto_final = float(request.form.get("monto_final"))
 
+            # Calcular ventas desde apertura hasta ahora
             cursor.execute("""
                 SELECT IFNULL(SUM(total),0) as total_ventas
                 FROM ventas
@@ -1323,6 +1325,7 @@ def eliminar_servicio(id):
 
     flash("Servicio eliminado correctamente")
     return redirect(url_for("servicios"))
+
 
 # EXPORTAR SERVICIO A EXCEL
 # -------------------
