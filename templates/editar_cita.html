@@ -12,30 +12,35 @@
            class="form-control mb-2"
            required>
 
-    <label>Estado:</label>
-    <select name="estado" class="form-control mb-3">
-
-        <option value="pendiente"
-        {% if cita.estado == "pendiente" %}selected{% endif %}>
-        Pendiente
+    <label>Servicio:</label>
+    <select name="servicio_id" class="form-control mb-2">
+        <option value="">Sin servicio</option>
+        {% for s in servicios %}
+        <option value="{{ s.id }}" {% if s.id == cita.servicio_id %}selected{% endif %}>
+            {{ s.nombre }} - ${{ s.precio }}
         </option>
-
-        <option value="completada"
-        {% if cita.estado == "completada" %}selected{% endif %}>
-        Completada
-        </option>
-
-        <option value="perdida"
-        {% if cita.estado == "perdida" %}selected{% endif %}>
-        Perdida
-        </option>
-
-        <option value="cancelada"
-        {% if cita.estado == "cancelada" %}selected{% endif %}>
-        Cancelada
-        </option>
-
+        {% endfor %}
     </select>
+
+    <label>Estado:</label>
+    <select name="estado" class="form-control mb-2">
+        <option value="Pendiente" {% if cita.estado == "Pendiente" %}selected{% endif %}>Pendiente</option>
+        <option value="Completada" {% if cita.estado == "Completada" %}selected{% endif %}>Completada</option>
+        <option value="Cancelada" {% if cita.estado == "Cancelada" %}selected{% endif %}>Cancelada</option>
+    </select>
+
+    <label>Tiempo transcurrido en servicio:</label>
+    <input type="number"
+           name="tiempo_servicio_min"
+           value="{{ cita.tiempo_servicio_min or '' }}"
+           class="form-control mb-2"
+           placeholder="Minutos">
+
+    <label>Notas de agenda:</label>
+    <textarea name="notas" class="form-control mb-2">{{ cita.notas or "" }}</textarea>
+
+    <label>Observaciones del servicio:</label>
+    <textarea name="observaciones" class="form-control mb-3">{{ cita.observaciones or "" }}</textarea>
 
     <button class="btn btn-success w-100">
         Guardar Cambios

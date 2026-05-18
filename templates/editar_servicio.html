@@ -25,9 +25,9 @@
               rows="3">{{ servicio.descripcion }}</textarea>
 
     <label>Código de Barras:</label>
-    <input name="codigo_barras"
-           value="{{ servicio.codigo_barras }}"
-           class="form-control mb-3">
+    <input value="{{ servicio.codigo_barras or 'Se generará al guardar' }}"
+           class="form-control mb-3"
+           readonly>
 
     <button class="btn btn-success w-100">
         Guardar Cambios

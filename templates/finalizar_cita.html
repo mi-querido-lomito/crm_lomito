@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Finalizar Cita</h2>
+
+<div class="alert alert-info">
+    <strong>Mascota:</strong> {{ cita.mascota }}<br>
+    <strong>Servicio:</strong> {{ cita.servicio or "Sin servicio" }}<br>
+    <strong>Fecha:</strong> {{ cita.fecha }}
+</div>
+
+<form method="POST">
+    <label>Tiempo transcurrido del servicio en minutos:</label>
+    <input type="number"
+           name="tiempo_servicio_min"
+           min="1"
+           value="{{ cita.tiempo_servicio_min or '' }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Observaciones:</label>
+    <textarea name="observaciones"
+              class="form-control mb-3"
+              rows="5"
+              placeholder="Observaciones del servicio realizado">{{ cita.observaciones or cita.notas or "" }}</textarea>
+
+    <button class="btn btn-success w-100">
+        Guardar observaciones y pasar a cobrar
+    </button>
+</form>
+
+{% endblock %}

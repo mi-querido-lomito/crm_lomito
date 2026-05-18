@@ -7,6 +7,15 @@
 
     <!-- Bootstrap CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .table-search-wrapper {
+            margin: 1rem 0;
+        }
+
+        .table-search-status {
+            min-height: 1.5rem;
+        }
+    </style>
 </head>
 
 <body>
@@ -117,6 +126,125 @@
     {% endblock %}
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll("table.table").forEach(function(table) {
+        if (table.dataset.search === "false") {
+            return;
+        }
+
+        var rows = Array.from(table.querySelectorAll("tbody tr")).filter(function(row) {
+            return row.querySelectorAll("td").length > 0;
+        });
+        if (rows.length === 0) {
+            rows = Array.from(table.querySelectorAll("tr")).filter(function(row) {
+                return row.querySelectorAll("td").length > 0;
+            });
+        }
+
+        if (rows.length === 0) {
+            return;
+        }
+
+        var colCount = table.querySelectorAll("thead th").length;
+        if (colCount === 0) {
+            colCount = table.querySelectorAll("tr:first-child th").length || 1;
+        }
+
+        var wrapper = document.createElement("div");
+        wrapper.className = "table-search-wrapper";
+
+        var inputGroup = document.createElement("div");
+        inputGroup.className = "input-group";
+
+        var label = document.createElement("span");
+        label.className = "input-group-text";
+        label.textContent = "Buscar";
+
+        var input = document.createElement("input");
+        input.type = "search";
+        input.className = "form-control";
+        input.placeholder = "Escribe para filtrar resultados de esta tabla";
+        input.setAttribute("aria-label", "Buscar en tabla");
+
+        var clearButton = document.createElement("button");
+        clearButton.type = "button";
+        clearButton.className = "btn btn-outline-secondary";
+        clearButton.textContent = "Limpiar";
+
+        var status = document.createElement("div");
+        status.className = "form-text table-search-status";
+
+        inputGroup.appendChild(label);
+        inputGroup.appendChild(input);
+        inputGroup.appendChild(clearButton);
+        wrapper.appendChild(inputGroup);
+        wrapper.appendChild(status);
+        table.parentNode.insertBefore(wrapper, table);
+
+        var noResultsRow = document.createElement("tr");
+        noResultsRow.className = "table-search-empty d-none";
+
+        var noResultsCell = document.createElement("td");
+        noResultsCell.colSpan = colCount;
+        noResultsCell.className = "text-center text-muted py-4";
+        noResultsCell.textContent = "No se encontraron resultados.";
+
+        noResultsRow.appendChild(noResultsCell);
+
+        var tbody = table.querySelector("tbody");
+        if (!tbody) {
+            tbody = document.createElement("tbody");
+            rows.forEach(function(row) {
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+        }
+        tbody.appendChild(noResultsRow);
+
+        function normalize(value) {
+            return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
+        function updateStatus(visibleCount) {
+            if (input.value.trim() === "") {
+                status.textContent = rows.length + " registros disponibles.";
+                return;
+            }
+
+            status.textContent = visibleCount + " de " + rows.length + " resultados encontrados.";
+        }
+
+        function filterRows() {
+            var query = normalize(input.value.trim());
+            var visibleCount = 0;
+
+            rows.forEach(function(row) {
+                var rowText = normalize(row.textContent);
+                var match = query === "" || rowText.includes(query);
+                row.classList.toggle("d-none", !match);
+
+                if (match) {
+                    visibleCount += 1;
+                }
+            });
+
+            noResultsRow.classList.toggle("d-none", visibleCount !== 0);
+            updateStatus(visibleCount);
+        }
+
+        input.addEventListener("input", filterRows);
+        clearButton.addEventListener("click", function() {
+            input.value = "";
+            filterRows();
+            input.focus();
+        });
+
+        filterRows();
+    });
+});
+</script>
 
 </body>
 </html>

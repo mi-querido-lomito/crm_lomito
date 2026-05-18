@@ -27,9 +27,9 @@
            required>
 
     <label>Código de Barras:</label>
-    <input name="codigo_barras"
-           value="{{ producto.codigo_barras }}"
-           class="form-control mb-3">
+    <input value="{{ producto.codigo_barras or 'Se generará al guardar' }}"
+           class="form-control mb-3"
+           readonly>
 
     <button class="btn btn-success w-100">
         Guardar Cambios

@@ -31,10 +31,9 @@
            class="form-control mb-2"
            placeholder="Proveedor">
 
-    <input name="codigo_barras"
-           value="{{ insumo.codigo_barras }}"
+    <input value="{{ insumo.codigo_barras or 'Se generará al guardar' }}"
            class="form-control mb-3"
-           placeholder="Código de barras">
+           readonly>
 
     <button class="btn btn-success w-100">
         Guardar Cambios

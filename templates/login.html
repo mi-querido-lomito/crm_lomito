@@ -1,14 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CRM Mi Querido Lomito</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='CSS/login.css') }}">
 </head>
-<body class="container mt-5">
-<h2>Iniciar Sesión</h2>
-<form method="POST">
-    <input name="username" placeholder="Usuario" class="form-control mb-2">
-    <input type="password" name="password" placeholder="Contraseña" class="form-control mb-2">
-    <button class="btn btn-primary">Entrar</button>
-</form>
+<body class="text-center">
+    <main class="form-signin">
+        <form action="{{ url_for('login') }}" method="POST">
+            <img
+                class="mb-4 login-logo"
+                src="{{ url_for('static', filename='img/Logo sin fondo parcial.png') }}"
+                alt="Mi Querido Lomito"
+            >
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for msg in messages %}
+                    <div class="alert alert-primary alert-dismissible fade show text-start" role="alert">
+                        <strong>{{ msg }}</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <h1 class="h3 mb-3 fw-normal">Inicio de sesión</h1>
+
+            <div class="form-floating">
+                <input type="text" class="form-control" id="username" name="username" placeholder="Usuario" required>
+                <label for="username">Usuario</label>
+            </div>
+
+            <div class="form-floating mt-2">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required>
+                <label for="password">Contraseña</label>
+            </div>
+
+            <button class="btn btn-primary w-100 py-2 mt-3" type="submit">Entrar</button>
+        </form>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

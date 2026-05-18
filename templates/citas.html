@@ -3,14 +3,35 @@
 
 <h2>Citas</h2>
 
+<div class="alert alert-info">
+    Jornada 10:00 a 17:00. Hoy hay {{ agenda_hoy.ocupado_min }} min estimados ocupados y
+    {{ agenda_hoy.disponible_min }} min disponibles.
+</div>
+
 <form method="POST" class="mb-4">
-    <select name="mascota_id" class="form-control mb-2">
+    <select name="mascota_id" class="form-control mb-2" required>
+        <option value="">Seleccionar mascota</option>
         {% for m in mascotas %}
         <option value="{{ m.id }}">{{ m.nombre }}</option>
         {% endfor %}
     </select>
 
-    <input type="datetime-local" name="fecha" class="form-control mb-2" required>
+    <select name="servicio_id" id="servicio_id" class="form-control mb-2" required>
+        <option value="">Seleccionar servicio</option>
+        {% for s in servicios %}
+        <option value="{{ s.id }}">{{ s.nombre }} - ${{ s.precio }}</option>
+        {% endfor %}
+    </select>
+
+    <input type="datetime-local" name="fecha" id="fecha_cita" class="form-control mb-2" required>
+
+    <div id="agendaEstimacion" class="form-text mb-2">
+        Elige servicio y fecha para estimar espacio disponible.
+    </div>
+
+    <textarea name="notas"
+              class="form-control mb-2"
+              placeholder="Notas para la cita"></textarea>
 
     <button class="btn btn-success">Agendar Cita</button>
 </form>
@@ -19,16 +40,20 @@
     <tr>
         <th>ID</th>
         <th>Mascota</th>
+        <th>Servicio</th>
         <th>Fecha</th>
         <th>Estado</th>
+        <th>Tiempo real</th>
         <th>Acciones</th>
     </tr>
     {% for c in citas %}
     <tr>
         <td>{{ c.id }}</td>
         <td>{{ c.mascota }}</td>
+        <td>{{ c.servicio or "Sin servicio" }}</td>
         <td>{{ c.fecha }}</td>
         <td>{{ c.estado }}</td>
+        <td>{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
         <td>
             <a href="{{ url_for('editar_cita', id=c.id) }}"
                 class="btn btn-sm btn-warning">
@@ -43,11 +68,45 @@
 
             <a href="{{ url_for('convertir_cita', id=c.id) }}"
                 class="btn btn-sm btn-success">
-                Completar y Cobrar
+                Finalizar y cobrar
             </a>
         </td>
     </tr>
     {% endfor %}
 </table>
+
+<script>
+const fechaCita = document.getElementById("fecha_cita");
+const servicioCita = document.getElementById("servicio_id");
+const agendaEstimacion = document.getElementById("agendaEstimacion");
+
+async function actualizarEstimacionAgenda() {
+    if (!fechaCita.value || !servicioCita.value) {
+        agendaEstimacion.textContent = "Elige servicio y fecha para estimar espacio disponible.";
+        agendaEstimacion.className = "form-text mb-2";
+        return;
+    }
+
+    const params = new URLSearchParams({
+        fecha: fechaCita.value,
+        servicio_id: servicioCita.value
+    });
+
+    const response = await fetch("{{ url_for('api_agenda_dia') }}?" + params.toString());
+    const data = await response.json();
+
+    if (!data.ok) {
+        agendaEstimacion.textContent = data.error;
+        agendaEstimacion.className = "form-text text-danger mb-2";
+        return;
+    }
+
+    agendaEstimacion.textContent = "Ocupado: " + data.ocupado_min + " min. Disponible: " + data.disponible_min + " min. Servicio estimado: " + data.nuevo_min + " min.";
+    agendaEstimacion.className = data.cabe ? "form-text text-success mb-2" : "form-text text-danger mb-2";
+}
+
+fechaCita.addEventListener("change", actualizarEstimacionAgenda);
+servicioCita.addEventListener("change", actualizarEstimacionAgenda);
+</script>
 
 {% endblock %}

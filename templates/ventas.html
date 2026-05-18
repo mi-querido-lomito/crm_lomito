@@ -33,24 +33,26 @@ document.getElementById("scanner").addEventListener("change", function() {
 <form method="POST">
 
     <input type="hidden" name="agregar" value="1">
+    <input type="hidden" name="codigo_barras" id="manualCodigoBarras">
 
     <h5>Agregar Manual</h5>
 
-    <select name="codigo_barras" class="form-control mb-2">
-        <option value="">Seleccionar producto o servicio</option>
+    <div class="position-relative mb-2">
+        <input type="text"
+               id="manualSearch"
+               class="form-control"
+               autocomplete="off"
+               placeholder="Buscar producto o servicio por nombre o código">
 
-        {% for p in productos %}
-        <option value="{{ p.codigo_barras }}">
-            🛍 {{ p.nombre }} | Stock: {{ p.stock }} | ${{ p.precio }}
-        </option>
-        {% endfor %}
+        <div id="manualResults"
+             class="list-group position-absolute w-100 shadow-sm d-none"
+             style="z-index: 1050; max-height: 240px; overflow-y: auto;">
+        </div>
+    </div>
 
-        {% for s in servicios %}
-        <option value="{{ s.codigo_barras }}">
-            ✂ {{ s.nombre }} | ${{ s.precio }}
-        </option>
-        {% endfor %}
-    </select>
+    <div id="manualSelected" class="form-text mb-2">
+        Selecciona un producto o servicio de la lista.
+    </div>
 
     <input type="number"
            name="cantidad"
@@ -63,6 +65,105 @@ document.getElementById("scanner").addEventListener("change", function() {
     </button>
 
 </form>
+
+<script>
+const manualItems = [
+    {% for p in productos %}
+    {
+        codigo: {{ (p.codigo_barras or '')|tojson }},
+        nombre: {{ p.nombre|tojson }},
+        tipo: "Producto",
+        detalle: "Stock: {{ p.stock }} | ${{ p.precio }}"
+    },
+    {% endfor %}
+    {% for s in servicios %}
+    {
+        codigo: {{ (s.codigo_barras or '')|tojson }},
+        nombre: {{ s.nombre|tojson }},
+        tipo: "Servicio",
+        detalle: "${{ s.precio }}"
+    },
+    {% endfor %}
+].filter(function(item) {
+    return item.codigo !== "";
+});
+
+const manualSearch = document.getElementById("manualSearch");
+const manualResults = document.getElementById("manualResults");
+const manualCodigoBarras = document.getElementById("manualCodigoBarras");
+const manualSelected = document.getElementById("manualSelected");
+
+function normalizeSearch(value) {
+    return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function hideManualResults() {
+    manualResults.classList.add("d-none");
+}
+
+function selectManualItem(item) {
+    manualCodigoBarras.value = item.codigo;
+    manualSearch.value = item.nombre;
+    manualSelected.textContent = item.tipo + " seleccionado: " + item.nombre + " | " + item.detalle;
+    hideManualResults();
+}
+
+function renderManualResults() {
+    const query = normalizeSearch(manualSearch.value.trim());
+    manualCodigoBarras.value = "";
+    manualSelected.textContent = "Selecciona un producto o servicio de la lista.";
+    manualResults.innerHTML = "";
+
+    if (query.length === 0) {
+        hideManualResults();
+        return;
+    }
+
+    const matches = manualItems.filter(function(item) {
+        const text = normalizeSearch(item.tipo + " " + item.nombre + " " + item.codigo + " " + item.detalle);
+        return text.includes(query);
+    }).slice(0, 12);
+
+    if (matches.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "list-group-item text-muted";
+        empty.textContent = "No se encontraron productos o servicios.";
+        manualResults.appendChild(empty);
+        manualResults.classList.remove("d-none");
+        return;
+    }
+
+    matches.forEach(function(item) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "list-group-item list-group-item-action";
+        button.innerHTML = "<strong>" + item.nombre + "</strong><br><small>" + item.tipo + " | " + item.detalle + " | Código: " + item.codigo + "</small>";
+        button.addEventListener("click", function() {
+            selectManualItem(item);
+        });
+        manualResults.appendChild(button);
+    });
+
+    manualResults.classList.remove("d-none");
+}
+
+manualSearch.addEventListener("input", renderManualResults);
+manualSearch.addEventListener("focus", renderManualResults);
+
+document.addEventListener("click", function(event) {
+    if (!manualSearch.contains(event.target) && !manualResults.contains(event.target)) {
+        hideManualResults();
+    }
+});
+
+manualSearch.closest("form").addEventListener("submit", function(event) {
+    if (!manualCodigoBarras.value) {
+        event.preventDefault();
+        manualSelected.textContent = "Elige un producto o servicio antes de agregar.";
+        manualSearch.focus();
+    }
+});
+</script>
 
 <hr>
 
@@ -117,12 +218,59 @@ document.getElementById("scanner").addEventListener("change", function() {
     <h5>Datos de la Venta</h5>
 
     <label>Cliente:</label>
-    <select name="cliente_id" class="form-control mb-2">
+    <select name="cliente_id" id="ventaCliente" class="form-control mb-2">
         <option value="">Venta sin cliente</option>
         {% for c in clientes %}
-            <option value="{{ c.id }}">{{ c.nombre }}</option>
+            <option value="{{ c.id }}"
+                {% if venta_cliente_id and venta_cliente_id == c.id %}selected{% endif %}>
+                {{ c.nombre }}
+            </option>
         {% endfor %}
     </select>
+
+    <label>Mascota:</label>
+    <input type="hidden" name="mascota_opcion" id="mascotaOpcion" value="existente">
+
+    <select name="mascota_id" id="ventaMascota" class="form-control mb-2">
+        <option value="">Selecciona primero un cliente</option>
+    </select>
+
+    <div id="sinClienteMascota" class="border rounded p-3 mb-2 d-none">
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="mascota_sin_cliente" id="ventaSinMascota" value="sin" checked>
+            <label class="form-check-label" for="ventaSinMascota">Venta sin mascota</label>
+        </div>
+
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="radio" name="mascota_sin_cliente" id="ventaMascotaNueva" value="nueva">
+            <label class="form-check-label" for="ventaMascotaNueva">Ingresar mascota nueva</label>
+        </div>
+
+        <div id="datosMascotaNueva" class="d-none">
+            <input name="mascota_nombre" placeholder="Nombre de la mascota" class="form-control mb-2">
+            <select name="mascota_especie" class="form-control mb-2">
+                <option value="Perro">Perro</option>
+                <option value="Gato">Gato</option>
+            </select>
+            <input name="mascota_raza" placeholder="Raza" class="form-control mb-2">
+            <input type="number" name="mascota_edad" placeholder="Edad" class="form-control mb-2">
+            <select name="mascota_genero" class="form-control mb-2">
+                <option value="">Género</option>
+                <option value="Macho">Macho</option>
+                <option value="Hembra">Hembra</option>
+            </select>
+            <input name="mascota_talla" placeholder="Talla" class="form-control mb-2">
+            <input name="mascota_color" placeholder="Color" class="form-control mb-2">
+            <input name="mascota_alergias" placeholder="Alergias" class="form-control mb-2">
+            <textarea name="mascota_notas" placeholder="Observaciones" class="form-control mb-2"></textarea>
+        </div>
+    </div>
+
+    {% if session.get("venta_cita_id") %}
+    <div class="alert alert-info py-2">
+        Esta venta quedará ligada a la cita #{{ session.get("venta_cita_id") }}.
+    </div>
+    {% endif %}
 
     <label>Método de pago:</label>
     <select name="metodo_pago"
@@ -139,10 +287,80 @@ document.getElementById("scanner").addEventListener("change", function() {
     </button>
 
     <button name="vaciar"
-            class="btn btn-warning w-100">
+            class="btn btn-warning w-100"
+            formnovalidate>
         🗑 Vaciar Carrito
     </button>
 
 </form>
+
+<script>
+const mascotasVenta = [
+    {% for m in mascotas %}
+    {
+        id: {{ m.id }},
+        clienteId: {{ m.cliente_id|tojson }},
+        nombre: {{ m.nombre|tojson }},
+        dueno: {{ (m.dueno or '')|tojson }}
+    },
+    {% endfor %}
+];
+
+const ventaCliente = document.getElementById("ventaCliente");
+const ventaMascota = document.getElementById("ventaMascota");
+const sinClienteMascota = document.getElementById("sinClienteMascota");
+const mascotaOpcion = document.getElementById("mascotaOpcion");
+const ventaSinMascota = document.getElementById("ventaSinMascota");
+const ventaMascotaNueva = document.getElementById("ventaMascotaNueva");
+const datosMascotaNueva = document.getElementById("datosMascotaNueva");
+const mascotaPreseleccionada = {{ session.get("venta_mascota_id")|tojson }};
+
+function actualizarMascotasVenta() {
+    const clienteId = ventaCliente.value ? Number(ventaCliente.value) : null;
+    ventaMascota.innerHTML = "";
+
+    if (!clienteId) {
+        ventaMascota.classList.add("d-none");
+        sinClienteMascota.classList.remove("d-none");
+        mascotaOpcion.value = ventaMascotaNueva.checked ? "nueva" : "sin";
+        return;
+    }
+
+    sinClienteMascota.classList.add("d-none");
+    ventaMascota.classList.remove("d-none");
+    mascotaOpcion.value = "existente";
+
+    const inicial = document.createElement("option");
+    inicial.value = "";
+    inicial.textContent = "Venta sin mascota asociada";
+    ventaMascota.appendChild(inicial);
+
+    mascotasVenta
+        .filter(function(mascota) {
+            return Number(mascota.clienteId) === clienteId;
+        })
+        .forEach(function(mascota) {
+            const option = document.createElement("option");
+            option.value = mascota.id;
+            option.textContent = mascota.nombre;
+            if (mascotaPreseleccionada === mascota.id) {
+                option.selected = true;
+            }
+            ventaMascota.appendChild(option);
+        });
+}
+
+function actualizarMascotaNueva() {
+    datosMascotaNueva.classList.toggle("d-none", !ventaMascotaNueva.checked);
+    mascotaOpcion.value = ventaMascotaNueva.checked ? "nueva" : "sin";
+}
+
+ventaCliente.addEventListener("change", actualizarMascotasVenta);
+ventaSinMascota.addEventListener("change", actualizarMascotaNueva);
+ventaMascotaNueva.addEventListener("change", actualizarMascotaNueva);
+
+actualizarMascotasVenta();
+actualizarMascotaNueva();
+</script>
 
 {% endblock %}

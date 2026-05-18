@@ -21,14 +21,14 @@ from config import Config
 import MySQLdb.cursors
 from functools import wraps
 from flask import abort
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 def actualizar_citas_perdidas():
     cursor = mysql.connection.cursor()
     cursor.execute("""
         UPDATE citas
-        SET estado='perdida'
-        WHERE estado='pendiente'
+        SET estado='Cancelada'
+        WHERE estado='Pendiente'
         AND fecha < NOW()
     """)
     mysql.connection.commit()
@@ -53,6 +53,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 app.secret_key = "SistemasRacks.23"
+schema_checked = False
 
 
 mysql = MySQL()
@@ -61,6 +62,189 @@ mysql.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+
+BARCODE_ENTITIES = {
+    "productos": "PROD",
+    "servicios": "SERV",
+    "insumos": "INS",
+}
+
+
+def generar_codigo_barra(prefijo):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    codigo = generar_codigo_barra_cursor(cursor, prefijo)
+    cursor.close()
+    return codigo
+
+
+def generar_codigo_barra_cursor(cursor, prefijo):
+    cursor.execute("""
+        SELECT MAX(CAST(SUBSTRING_INDEX(codigo_barras, '-', -1) AS UNSIGNED)) AS ultimo
+        FROM (
+            SELECT codigo_barras FROM productos
+            UNION ALL SELECT codigo_barras FROM servicios
+            UNION ALL SELECT codigo_barras FROM insumos
+        ) AS codigos
+        WHERE codigo_barras REGEXP %s
+    """, (f"^{prefijo}-[0-9]+$",))
+
+    row = cursor.fetchone()
+
+    ultimo = int(row["ultimo"]) if row and row.get("ultimo") else 1000
+    return f"{prefijo}-{ultimo + 1}"
+
+
+def asegurar_codigo_barra_actual(tabla, registro_id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute(f"SELECT codigo_barras FROM {tabla} WHERE id=%s", (registro_id,))
+    registro = cursor.fetchone()
+
+    if not registro:
+        cursor.close()
+        return None
+
+    codigo = (registro.get("codigo_barras") or "").strip()
+    if not codigo:
+        codigo = generar_codigo_barra_cursor(cursor, BARCODE_ENTITIES[tabla])
+        cursor.execute(
+            f"UPDATE {tabla} SET codigo_barras=%s WHERE id=%s",
+            (codigo, registro_id)
+        )
+        mysql.connection.commit()
+
+    cursor.close()
+    return codigo
+
+
+def rellenar_codigos_barras_faltantes(tabla):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute(f"""
+        SELECT id
+        FROM {tabla}
+        WHERE codigo_barras IS NULL OR TRIM(codigo_barras) = ''
+        ORDER BY id
+    """)
+    registros = cursor.fetchall()
+    for registro in registros:
+        codigo = generar_codigo_barra_cursor(cursor, BARCODE_ENTITIES[tabla])
+        cursor.execute(
+            f"UPDATE {tabla} SET codigo_barras=%s WHERE id=%s",
+            (codigo, registro["id"])
+        )
+
+    if registros:
+        mysql.connection.commit()
+
+    cursor.close()
+
+
+def columna_existe(cursor, tabla, columna):
+    cursor.execute(f"SHOW COLUMNS FROM {tabla} LIKE %s", (columna,))
+    return cursor.fetchone() is not None
+
+
+def asegurar_columna(cursor, tabla, columna, definicion):
+    if not columna_existe(cursor, tabla, columna):
+        cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+
+
+def asegurar_schema_crm():
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    columnas = {
+        "clientes": {
+            "direccion": "TEXT NULL",
+        },
+        "mascotas": {
+            "raza": "VARCHAR(100) NULL",
+            "edad": "INT NULL",
+            "fecha_especial": "DATE NULL",
+            "alergias": "TEXT NULL",
+            "genero": "VARCHAR(20) NULL",
+            "talla": "VARCHAR(50) NULL",
+            "color": "VARCHAR(80) NULL",
+            "notas": "TEXT NULL",
+        },
+        "citas": {
+            "servicio_id": "INT NULL",
+            "observaciones": "TEXT NULL",
+            "tiempo_servicio_min": "INT NULL",
+        },
+        "ventas": {
+            "mascota_id": "INT NULL",
+            "cita_id": "INT NULL",
+        },
+    }
+
+    for tabla, definiciones in columnas.items():
+        for columna, definicion in definiciones.items():
+            asegurar_columna(cursor, tabla, columna, definicion)
+
+    mysql.connection.commit()
+    cursor.close()
+
+
+def estimar_tiempo_servicio(cursor, servicio_id):
+    if not servicio_id:
+        return 60
+
+    cursor.execute("""
+        SELECT AVG(tiempo_servicio_min) AS promedio
+        FROM citas
+        WHERE servicio_id=%s
+        AND estado='Completada'
+        AND tiempo_servicio_min IS NOT NULL
+        AND tiempo_servicio_min > 0
+    """, (servicio_id,))
+    promedio = cursor.fetchone()
+
+    if promedio and promedio.get("promedio"):
+        return int(round(float(promedio["promedio"])))
+
+    cursor.execute("SELECT duracion_min FROM servicios WHERE id=%s", (servicio_id,))
+    servicio = cursor.fetchone()
+
+    if servicio and servicio.get("duracion_min"):
+        return int(servicio["duracion_min"])
+
+    return 60
+
+
+def resumen_agenda_dia(cursor, fecha, servicio_id=None):
+    inicio = datetime.combine(fecha.date(), time(10, 0))
+    fin = datetime.combine(fecha.date(), time(17, 0))
+    jornada_min = int((fin - inicio).total_seconds() / 60)
+    nuevo_min = estimar_tiempo_servicio(cursor, servicio_id)
+
+    cursor.execute("""
+        SELECT servicio_id
+        FROM citas
+        WHERE DATE(fecha)=DATE(%s)
+        AND estado='Pendiente'
+    """, (fecha,))
+    citas_dia = cursor.fetchall()
+
+    ocupado = sum(estimar_tiempo_servicio(cursor, cita.get("servicio_id")) for cita in citas_dia)
+
+    return {
+        "inicio": inicio,
+        "fin": fin,
+        "jornada_min": jornada_min,
+        "ocupado_min": ocupado,
+        "disponible_min": max(jornada_min - ocupado, 0),
+        "nuevo_min": nuevo_min,
+        "cabe": ocupado + nuevo_min <= jornada_min and inicio <= fecha < fin,
+    }
+
+
+@app.before_request
+def verificar_schema_crm():
+    global schema_checked
+    if schema_checked or request.endpoint in ("static", "login", "home"):
+        return
+
+    asegurar_schema_crm()
+    schema_checked = True
 
 # -------------------
 # USER MODEL
@@ -185,7 +369,7 @@ def dashboard():
     resumen_citas = cursor.fetchall()
 
     # Inventario bajo
-    cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 5")
+    cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 2")
     bajo_stock = cursor.fetchall()
 
     # Estado de caja
@@ -197,7 +381,7 @@ def dashboard():
         SELECT c.id, c.fecha, m.nombre as mascota
         FROM citas c
         JOIN mascotas m ON c.mascota_id = m.id
-        WHERE c.estado='pendiente'
+        WHERE c.estado='Pendiente'
         AND c.fecha BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
         ORDER BY c.fecha ASC
     """)
@@ -233,16 +417,16 @@ def clientes():
 
         nombre = request.form.get("nombre")
         telefono = request.form.get("telefono")
-        email = request.form.get("email")
+        direccion = request.form.get("direccion")
 
         if not nombre:
             flash("El nombre es obligatorio")
             return redirect(url_for("clientes"))
 
         cursor.execute("""
-            INSERT INTO clientes (nombre, telefono, email)
+            INSERT INTO clientes (nombre, telefono, direccion)
             VALUES (%s, %s, %s)
-        """, (nombre, telefono, email))
+        """, (nombre, telefono, direccion))
 
         mysql.connection.commit()
         flash("Cliente agregado correctamente")
@@ -278,15 +462,15 @@ def editar_cliente(id):
 
         nombre = request.form.get("nombre")
         telefono = request.form.get("telefono")
-        email = request.form.get("email")
+        direccion = request.form.get("direccion")
 
         cursor.execute("""
             UPDATE clientes
             SET nombre=%s,
                 telefono=%s,
-                email=%s
+                direccion=%s
             WHERE id=%s
-        """, (nombre, telefono, email, id))
+        """, (nombre, telefono, direccion, id))
 
         mysql.connection.commit()
         cursor.close()
@@ -341,17 +525,17 @@ def export_clientes_pdf():
     styles = getSampleStyleSheet()
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute("SELECT nombre, telefono, email FROM clientes")
+    cursor.execute("SELECT nombre, telefono, direccion FROM clientes")
     data = cursor.fetchall()
     cursor.close()
 
-    table_data = [["Nombre", "Teléfono", "Email"]]
+    table_data = [["Nombre", "Teléfono", "Dirección"]]
 
     for c in data:
         table_data.append([
             c["nombre"],
             c["telefono"] if c["telefono"] else "",
-            c["email"] if c["email"] else ""
+            c["direccion"] if c["direccion"] else ""
         ])
 
     table = Table(table_data)
@@ -379,13 +563,58 @@ def mascotas():
     if request.method == "POST":
         nombre = request.form["nombre"]
         especie = request.form["especie"]
-        cliente_id = request.form["cliente_id"]
+        cliente_id = request.form.get("cliente_id")
+        nuevo_cliente = request.form.get("nuevo_cliente")
 
-        cursor.execute("INSERT INTO mascotas (nombre, especie, cliente_id) VALUES (%s,%s,%s)",
-                       (nombre, especie, cliente_id))
+        if nuevo_cliente == "1":
+            cliente_nombre = request.form.get("cliente_nombre")
+            cliente_telefono = request.form.get("cliente_telefono")
+            cliente_direccion = request.form.get("cliente_direccion")
+
+            if not cliente_nombre:
+                flash("El nombre del nuevo cliente es obligatorio")
+                cursor.close()
+                return redirect(url_for("mascotas"))
+
+            cursor.execute("""
+                INSERT INTO clientes (nombre, telefono, direccion)
+                VALUES (%s, %s, %s)
+            """, (cliente_nombre, cliente_telefono, cliente_direccion))
+            mysql.connection.commit()
+            cliente_id = cursor.lastrowid
+
+        if not cliente_id:
+            flash("Selecciona un dueño o registra un cliente nuevo")
+            cursor.close()
+            return redirect(url_for("mascotas"))
+
+        datos = (
+            nombre,
+            especie,
+            cliente_id,
+            request.form.get("raza"),
+            request.form.get("edad") or None,
+            request.form.get("fecha_especial") or None,
+            request.form.get("alergias"),
+            request.form.get("genero"),
+            request.form.get("talla"),
+            request.form.get("color"),
+            request.form.get("notas"),
+        )
+
+        cursor.execute("""
+            INSERT INTO mascotas
+            (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, datos)
         mysql.connection.commit()
 
-    cursor.execute("SELECT mascotas.*, clientes.nombre as dueno FROM mascotas JOIN clientes ON mascotas.cliente_id = clientes.id")
+    cursor.execute("""
+        SELECT mascotas.*, clientes.nombre as dueno
+        FROM mascotas
+        JOIN clientes ON mascotas.cliente_id = clientes.id
+        ORDER BY mascotas.id DESC
+    """)
     data = cursor.fetchall()
 
     cursor.execute("SELECT * FROM clientes")
@@ -408,6 +637,7 @@ def editar_mascota(id):
     mascota = cursor.fetchone()
 
     if not mascota:
+        cursor.close()
         flash("Mascota no encontrada")
         return redirect(url_for("mascotas"))
 
@@ -420,14 +650,30 @@ def editar_mascota(id):
         nombre = request.form["nombre"]
         especie = request.form["especie"]
         cliente_id = request.form["cliente_id"]
+        raza = request.form.get("raza")
+        edad = request.form.get("edad") or None
+        fecha_especial = request.form.get("fecha_especial") or None
+        alergias = request.form.get("alergias")
+        genero = request.form.get("genero")
+        talla = request.form.get("talla")
+        color = request.form.get("color")
+        notas = request.form.get("notas")
 
         cursor.execute("""
             UPDATE mascotas
             SET nombre=%s,
                 especie=%s,
-                cliente_id=%s
+                cliente_id=%s,
+                raza=%s,
+                edad=%s,
+                fecha_especial=%s,
+                alergias=%s,
+                genero=%s,
+                talla=%s,
+                color=%s,
+                notas=%s
             WHERE id=%s
-        """, (nombre, especie, cliente_id, id))
+        """, (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas, id))
 
         mysql.connection.commit()
         flash("Mascota actualizada correctamente")
@@ -454,6 +700,70 @@ def eliminar_mascota(id):
     return redirect(url_for("mascotas"))
 
 
+@app.route("/mascota/<int:id>/historial")
+@login_required
+def historial_mascota(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    cursor.execute("""
+        SELECT mascotas.*, clientes.nombre as dueno, clientes.telefono, clientes.direccion
+        FROM mascotas
+        JOIN clientes ON mascotas.cliente_id = clientes.id
+        WHERE mascotas.id=%s
+    """, (id,))
+    mascota = cursor.fetchone()
+
+    if not mascota:
+        cursor.close()
+        flash("Mascota no encontrada")
+        return redirect(url_for("mascotas"))
+
+    cursor.execute("""
+        SELECT c.*, s.nombre as servicio, s.precio
+        FROM citas c
+        LEFT JOIN servicios s ON c.servicio_id = s.id
+        WHERE c.mascota_id=%s
+        ORDER BY c.fecha DESC
+    """, (id,))
+    citas = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT v.id as venta_id, v.fecha, v.total, v.metodo_pago,
+               d.tipo, d.cantidad, d.precio_unitario, d.subtotal,
+               s.nombre as servicio, p.nombre as producto
+        FROM ventas v
+        JOIN detalle_venta d ON d.venta_id = v.id
+        LEFT JOIN servicios s ON d.servicio_id = s.id
+        LEFT JOIN productos p ON d.producto_id = p.id
+        WHERE v.mascota_id=%s
+        AND v.estado='activa'
+        ORDER BY v.fecha DESC
+    """, (id,))
+    ventas = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT s.nombre as servicio, AVG(c.tiempo_servicio_min) as promedio_min, COUNT(*) as total
+        FROM citas c
+        LEFT JOIN servicios s ON c.servicio_id = s.id
+        WHERE c.mascota_id=%s
+        AND c.estado='Completada'
+        AND c.tiempo_servicio_min IS NOT NULL
+        GROUP BY c.servicio_id, s.nombre
+        ORDER BY s.nombre
+    """, (id,))
+    promedios = cursor.fetchall()
+
+    cursor.close()
+
+    return render_template(
+        "historial_mascota.html",
+        mascota=mascota,
+        citas=citas,
+        ventas=ventas,
+        promedios=promedios
+    )
+
+
 # -------------------
 # PRODUCTOS
 # -------------------
@@ -467,13 +777,14 @@ def productos():
         nombre = request.form["nombre"]
         stock = request.form["stock"]
         precio = request.form["precio"]
-        codigo = request.form["codigo_barras"]
+        codigo = generar_codigo_barra("PROD")
 
         cursor.execute(
     "INSERT INTO productos (nombre, stock, precio, codigo_barras) VALUES (%s,%s,%s,%s)",
     (nombre, stock, precio, codigo))
         mysql.connection.commit()
 
+    rellenar_codigos_barras_faltantes("productos")
     cursor.execute("SELECT * FROM productos")
     data = cursor.fetchall()
     cursor.close()
@@ -497,7 +808,9 @@ def editar_producto(id):
         nombre = request.form["nombre"]
         precio = request.form["precio"]
         stock = request.form["stock"]
-        codigo = request.form["codigo_barras"]
+        codigo = (producto.get("codigo_barras") or "").strip()
+        if not codigo:
+            codigo = generar_codigo_barra("PROD")
 
         cursor.execute("""
             UPDATE productos
@@ -522,6 +835,7 @@ def editar_producto(id):
 @rol_requerido(["admin"])
 def exportar_productos():
 
+    rellenar_codigos_barras_faltantes("productos")
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT * FROM productos")
     productos = cursor.fetchall()
@@ -559,6 +873,7 @@ def exportar_productos():
 @rol_requerido(["admin"])
 def etiquetas_productos_carta():
 
+    rellenar_codigos_barras_faltantes("productos")
     buffer = io.BytesIO()
 
     doc = SimpleDocTemplate(
@@ -648,20 +963,70 @@ def citas():
     if request.method == "POST":
         mascota_id = request.form["mascota_id"]
         fecha = request.form["fecha"]
+        servicio_id = request.form.get("servicio_id") or None
+        notas = request.form.get("notas")
+        fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
 
-        cursor.execute("INSERT INTO citas (mascota_id, fecha, estado) VALUES (%s,%s,'Pendiente')",
-                       (mascota_id, fecha))
+        agenda = resumen_agenda_dia(cursor, fecha_convertida, servicio_id)
+
+        if not agenda["cabe"]:
+            flash("La cita no cabe en la jornada laboral de 10:00 a 17:00 con el tiempo estimado actual")
+            cursor.close()
+            return redirect(url_for("citas"))
+
+        cursor.execute("""
+            INSERT INTO citas (mascota_id, servicio_id, fecha, estado, notas)
+            VALUES (%s, %s, %s, 'Pendiente', %s)
+        """, (mascota_id, servicio_id, fecha_convertida, notas))
         mysql.connection.commit()
 
-    cursor.execute("SELECT citas.*, mascotas.nombre as mascota FROM citas JOIN mascotas ON citas.mascota_id = mascotas.id")
+    cursor.execute("""
+        SELECT citas.*, mascotas.nombre as mascota, servicios.nombre as servicio
+        FROM citas
+        JOIN mascotas ON citas.mascota_id = mascotas.id
+        LEFT JOIN servicios ON citas.servicio_id = servicios.id
+        ORDER BY citas.fecha DESC
+    """)
     data = cursor.fetchall()
 
     cursor.execute("SELECT * FROM mascotas")
     mascotas = cursor.fetchall()
 
+    cursor.execute("SELECT * FROM servicios ORDER BY nombre")
+    servicios = cursor.fetchall()
+
+    agenda_hoy = resumen_agenda_dia(cursor, datetime.now())
+
     cursor.close()
 
-    return render_template("citas.html", citas=data, mascotas=mascotas)
+    return render_template("citas.html", citas=data, mascotas=mascotas, servicios=servicios, agenda_hoy=agenda_hoy)
+
+
+@app.route("/api/agenda_dia")
+@login_required
+def api_agenda_dia():
+    fecha_raw = request.args.get("fecha")
+    servicio_id = request.args.get("servicio_id") or None
+
+    if not fecha_raw:
+        return {"ok": False, "error": "Fecha requerida"}
+
+    try:
+        fecha = datetime.strptime(fecha_raw, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return {"ok": False, "error": "Formato de fecha inválido"}
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    agenda = resumen_agenda_dia(cursor, fecha, servicio_id)
+    cursor.close()
+
+    return {
+        "ok": True,
+        "ocupado_min": agenda["ocupado_min"],
+        "disponible_min": agenda["disponible_min"],
+        "nuevo_min": agenda["nuevo_min"],
+        "cabe": agenda["cabe"],
+    }
 
 # EDITAR CITA
 # -------------------
@@ -676,12 +1041,17 @@ def editar_cita(id):
     cita = cursor.fetchone()
 
     if not cita:
+        cursor.close()
         flash("Cita no encontrada")
         return redirect(url_for("citas"))
 
     if request.method == "POST":
 
         fecha_raw = request.form["fecha"]
+        servicio_id = request.form.get("servicio_id") or None
+        notas = request.form.get("notas")
+        observaciones = request.form.get("observaciones")
+        tiempo_servicio_min = request.form.get("tiempo_servicio_min") or None
 
         # convertir formato HTML a formato MySQL
         fecha_convertida = datetime.strptime(
@@ -693,9 +1063,13 @@ def editar_cita(id):
         cursor.execute("""
             UPDATE citas
             SET fecha=%s,
-                estado=%s
+                servicio_id=%s,
+                estado=%s,
+                notas=%s,
+                observaciones=%s,
+                tiempo_servicio_min=%s
             WHERE id=%s
-        """, (fecha_convertida, estado, id))
+        """, (fecha_convertida, servicio_id, estado, notas, observaciones, tiempo_servicio_min, id))
 
         mysql.connection.commit()
         flash("Cita actualizada correctamente")
@@ -706,9 +1080,15 @@ def editar_cita(id):
     # convertir fecha MySQL a formato HTML datetime-local
     fecha_html = cita["fecha"].strftime("%Y-%m-%dT%H:%M")
 
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT * FROM servicios ORDER BY nombre")
+    servicios = cursor.fetchall()
+    cursor.close()
+
     return render_template("editar_cita.html",
                            cita=cita,
-                           fecha_html=fecha_html)
+                           fecha_html=fecha_html,
+                           servicios=servicios)
 
 # CANCELAR CITA
 # -------------------
@@ -720,7 +1100,7 @@ def cancelar_cita(id):
 
     cursor.execute("""
         UPDATE citas
-        SET estado='cancelada'
+        SET estado='Cancelada'
         WHERE id=%s
     """, (id,))
 
@@ -732,31 +1112,63 @@ def cancelar_cita(id):
 
 # CONVERTIR CITA A VENTA
 # -------------------
-@app.route("/convertir_cita/<int:id>")
+@app.route("/convertir_cita/<int:id>", methods=["GET", "POST"])
 @login_required
 def convertir_cita(id):
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    cursor.execute("SELECT * FROM citas WHERE id=%s", (id,))
+    cursor.execute("""
+        SELECT citas.*, mascotas.nombre as mascota, servicios.nombre as servicio, servicios.precio
+        FROM citas
+        JOIN mascotas ON citas.mascota_id = mascotas.id
+        LEFT JOIN servicios ON citas.servicio_id = servicios.id
+        WHERE citas.id=%s
+    """, (id,))
     cita = cursor.fetchone()
 
     if not cita:
+        cursor.close()
         flash("Cita no encontrada")
         return redirect(url_for("citas"))
 
-    # marcar como completada
-    cursor.execute("""
-        UPDATE citas
-        SET estado='completada'
-        WHERE id=%s
-    """, (id,))
+    if request.method == "POST":
+        observaciones = request.form.get("observaciones")
+        tiempo = request.form.get("tiempo_servicio_min") or None
 
-    mysql.connection.commit()
+        cursor.execute("""
+            UPDATE citas
+            SET estado='Completada',
+                observaciones=%s,
+                tiempo_servicio_min=%s
+            WHERE id=%s
+        """, (observaciones, tiempo, id))
 
-    flash("Cita marcada como completada. Ahora registra la venta.")
+        mysql.connection.commit()
 
-    return redirect(url_for("ventas"))
+        session["venta_mascota_id"] = cita["mascota_id"]
+        session["venta_cita_id"] = cita["id"]
+
+        if cita.get("servicio_id"):
+            if "carrito" not in session:
+                session["carrito"] = []
+
+            session["carrito"].append({
+                "tipo": "servicio",
+                "id": cita["servicio_id"],
+                "nombre": cita["servicio"],
+                "precio": float(cita["precio"] or 0),
+                "cantidad": 1,
+                "subtotal": float(cita["precio"] or 0),
+            })
+            session.modified = True
+
+        flash("Cita completada. Revisa el carrito y finaliza el cobro.")
+        cursor.close()
+        return redirect(url_for("ventas"))
+
+    cursor.close()
+    return render_template("finalizar_cita.html", cita=cita)
 
 # -------------------
 # VENTAS
@@ -766,6 +1178,10 @@ def convertir_cita(id):
 def ventas():
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    def cerrar_y_redirigir(endpoint, **kwargs):
+        cursor.close()
+        return redirect(url_for(endpoint, **kwargs))
 
     if "carrito" not in session:
         session["carrito"] = []
@@ -780,7 +1196,7 @@ def ventas():
 
         if not codigo:
             flash("Código no proporcionado")
-            return redirect(url_for("ventas"))
+            return cerrar_y_redirigir("ventas")
 
         # Buscar en productos
         cursor.execute("SELECT * FROM productos WHERE codigo_barras=%s", (codigo,))
@@ -791,7 +1207,7 @@ def ventas():
 
             if item["stock"] < cantidad:
                 flash("Stock insuficiente")
-                return redirect(url_for("ventas"))
+                return cerrar_y_redirigir("ventas")
 
         else:
             # Buscar en servicios
@@ -802,7 +1218,7 @@ def ventas():
                 tipo = "servicio"
             else:
                 flash("Código no encontrado")
-                return redirect(url_for("ventas"))
+                return cerrar_y_redirigir("ventas")
 
         carrito_item = {
             "tipo": tipo,
@@ -816,7 +1232,7 @@ def ventas():
         session["carrito"].append(carrito_item)
         session.modified = True
 
-        return redirect(url_for("ventas"))
+        return cerrar_y_redirigir("ventas")
 
     # ==========================
     # ELIMINAR ITEM
@@ -827,7 +1243,7 @@ def ventas():
         session["carrito"].pop(index)
         session.modified = True
 
-        return redirect(url_for("ventas"))
+        return cerrar_y_redirigir("ventas")
 
     # ==========================
     # VACIAR CARRITO
@@ -837,7 +1253,7 @@ def ventas():
         session["carrito"] = []
         session.modified = True
 
-        return redirect(url_for("ventas"))
+        return cerrar_y_redirigir("ventas")
 
     # ==========================
     # FINALIZAR VENTA
@@ -848,16 +1264,60 @@ def ventas():
 
         if not carrito:
             flash("Carrito vacío")
-            return redirect(url_for("ventas"))
+            return cerrar_y_redirigir("ventas")
 
         metodo_pago = request.form.get("metodo_pago")
         cliente_id = request.form.get("cliente_id")
+        mascota_id = request.form.get("mascota_id") or session.get("venta_mascota_id")
+        mascota_opcion = request.form.get("mascota_opcion")
+        cita_id = session.get("venta_cita_id")
+
+        if mascota_opcion == "nueva":
+            mascota_nombre = request.form.get("mascota_nombre")
+
+            if not mascota_nombre:
+                flash("El nombre de la mascota nueva es obligatorio")
+                return cerrar_y_redirigir("ventas")
+
+            cursor.execute("""
+                INSERT INTO mascotas
+                (nombre, especie, cliente_id, raza, edad, genero, talla, color, alergias, notas)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                mascota_nombre,
+                request.form.get("mascota_especie") or "Perro",
+                cliente_id if cliente_id else None,
+                request.form.get("mascota_raza"),
+                request.form.get("mascota_edad") or None,
+                request.form.get("mascota_genero"),
+                request.form.get("mascota_talla"),
+                request.form.get("mascota_color"),
+                request.form.get("mascota_alergias"),
+                request.form.get("mascota_notas"),
+            ))
+            mysql.connection.commit()
+            mascota_id = cursor.lastrowid
+
+        if mascota_id and not cliente_id:
+            cursor.execute("SELECT cliente_id FROM mascotas WHERE id=%s", (mascota_id,))
+            mascota_venta = cursor.fetchone()
+            if mascota_venta and mascota_venta.get("cliente_id"):
+                cliente_id = mascota_venta["cliente_id"]
+
+        if cliente_id and mascota_id and mascota_opcion != "nueva":
+            cursor.execute(
+                "SELECT id FROM mascotas WHERE id=%s AND cliente_id=%s",
+                (mascota_id, cliente_id)
+            )
+            if not cursor.fetchone():
+                flash("La mascota seleccionada no pertenece al cliente elegido")
+                return cerrar_y_redirigir("ventas")
 
         total = sum(item["subtotal"] for item in carrito)
 
         cursor.execute(
-            "INSERT INTO ventas (total, metodo_pago, cliente_id) VALUES (%s, %s, %s)",
-            (total, metodo_pago, cliente_id if cliente_id else None)
+            "INSERT INTO ventas (total, metodo_pago, cliente_id, mascota_id, cita_id) VALUES (%s, %s, %s, %s, %s)",
+            (total, metodo_pago, cliente_id if cliente_id else None, mascota_id if mascota_id else None, cita_id)
         )
 
         mysql.connection.commit()
@@ -904,13 +1364,18 @@ def ventas():
         mysql.connection.commit()
 
         session["carrito"] = []
+        session.pop("venta_mascota_id", None)
+        session.pop("venta_cita_id", None)
         flash("Venta completada correctamente")
 
-        return redirect(url_for("ticket_html", venta_id=venta_id))
+        return cerrar_y_redirigir("ticket_html", venta_id=venta_id)
 
     # ==========================
     # CARGAR DATOS
     # ==========================
+    rellenar_codigos_barras_faltantes("productos")
+    rellenar_codigos_barras_faltantes("servicios")
+
     cursor.execute("SELECT * FROM productos")
     productos = cursor.fetchall()
 
@@ -920,6 +1385,21 @@ def ventas():
     cursor.execute("SELECT * FROM clientes")
     clientes = cursor.fetchall()
 
+    cursor.execute("""
+        SELECT mascotas.*, clientes.nombre as dueno
+        FROM mascotas
+        JOIN clientes ON mascotas.cliente_id = clientes.id
+        ORDER BY mascotas.nombre
+    """)
+    mascotas = cursor.fetchall()
+
+    venta_cliente_id = None
+    if session.get("venta_mascota_id"):
+        for mascota in mascotas:
+            if mascota["id"] == session.get("venta_mascota_id"):
+                venta_cliente_id = mascota.get("cliente_id")
+                break
+
     cursor.close()
 
     return render_template(
@@ -927,6 +1407,8 @@ def ventas():
         productos=productos,
         servicios=servicios,
         clientes=clientes,
+        mascotas=mascotas,
+        venta_cliente_id=venta_cliente_id,
         carrito=session.get("carrito", [])
     )
 
@@ -941,7 +1423,13 @@ def cancelar_venta(venta_id):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     # verificar venta
-    cursor.execute("SELECT * FROM ventas WHERE id=%s", (venta_id,))
+    cursor.execute("""
+        SELECT v.*, c.nombre as cliente, m.nombre as mascota
+        FROM ventas v
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN mascotas m ON v.mascota_id = m.id
+        WHERE v.id=%s
+    """, (venta_id,))
     venta = cursor.fetchone()
 
     if not venta:
@@ -1000,7 +1488,13 @@ def generar_ticket(venta_id):
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    cursor.execute("SELECT * FROM ventas WHERE id=%s", (venta_id,))
+    cursor.execute("""
+        SELECT v.*, c.nombre as cliente, m.nombre as mascota
+        FROM ventas v
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN mascotas m ON v.mascota_id = m.id
+        WHERE v.id=%s
+    """, (venta_id,))
     venta = cursor.fetchone()
 
     cursor.execute("""
@@ -1323,7 +1817,7 @@ def servicios():
         nombre = request.form.get("nombre")
         precio = request.form.get("precio")
         descripcion = request.form.get("descripcion")
-        codigo = request.form.get("codigo_barras")
+        codigo = generar_codigo_barra("SERV")
 
         cursor.execute("""
             INSERT INTO servicios (nombre, precio, descripcion, codigo_barras)
@@ -1335,6 +1829,7 @@ def servicios():
 
         return redirect(url_for("servicios"))
 
+    rellenar_codigos_barras_faltantes("servicios")
     cursor.execute("SELECT * FROM servicios")
     servicios = cursor.fetchall()
 
@@ -1363,7 +1858,9 @@ def editar_servicio(id):
         nombre = request.form["nombre"]
         precio = request.form["precio"]
         descripcion = request.form["descripcion"]
-        codigo = request.form.get("codigo_barras")
+        codigo = (servicio.get("codigo_barras") or "").strip()
+        if not codigo:
+            codigo = generar_codigo_barra("SERV")
 
         cursor.execute("""
             UPDATE servicios
@@ -1405,6 +1902,7 @@ def eliminar_servicio(id):
 @rol_requerido(["admin"])
 def exportar_servicios():
 
+    rellenar_codigos_barras_faltantes("servicios")
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT * FROM servicios")
     servicios = cursor.fetchall()
@@ -1442,6 +1940,7 @@ def exportar_servicios():
 @rol_requerido(["admin"])
 def etiquetas_servicios_carta():
 
+    rellenar_codigos_barras_faltantes("servicios")
     buffer = io.BytesIO()
 
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -1523,16 +2022,18 @@ def insumos():
         stock = request.form["stock"]
         costo = request.form["costo"]
         proveedor = request.form["proveedor"]
+        codigo = generar_codigo_barra("INS")
 
         cursor.execute("""
-            INSERT INTO insumos (nombre, stock, costo, proveedor)
-            VALUES (%s, %s, %s, %s)
-        """, (nombre, stock, costo, proveedor))
+            INSERT INTO insumos (nombre, stock, costo, proveedor, codigo_barras)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (nombre, stock, costo, proveedor, codigo))
 
         mysql.connection.commit()
         flash("Insumo agregado")
         return redirect(url_for("insumos"))
 
+    rellenar_codigos_barras_faltantes("insumos")
     cursor.execute("SELECT * FROM insumos ORDER BY fecha DESC")
     insumos = cursor.fetchall()
     cursor.close()
@@ -1562,7 +2063,9 @@ def editar_insumo(id):
         stock = request.form["stock"]
         costo = request.form["costo"]
         proveedor = request.form["proveedor"]
-        codigo = request.form.get("codigo_barras")
+        codigo = (insumo.get("codigo_barras") or "").strip()
+        if not codigo:
+            codigo = generar_codigo_barra("INS")
 
         cursor.execute("""
             UPDATE insumos
@@ -1605,6 +2108,7 @@ def eliminar_insumo(id):
 @rol_requerido(["admin"])
 def exportar_insumos():
 
+    rellenar_codigos_barras_faltantes("insumos")
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT * FROM insumos")
     insumos = cursor.fetchall()
@@ -1643,6 +2147,7 @@ def exportar_insumos():
 @rol_requerido(["admin"])
 def etiquetas_insumos_carta():
 
+    rellenar_codigos_barras_faltantes("insumos")
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
 
@@ -1742,5 +2247,4 @@ def gastos():
 
 # -------------------FINAL DE APP-------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3306)
-
+    app.run(host="0.0.0.0", port=3306, debug=False, use_reloader=False)

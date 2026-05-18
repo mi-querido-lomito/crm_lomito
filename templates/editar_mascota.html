@@ -4,7 +4,6 @@
 <h2>Editar Mascota</h2>
 
 <form method="POST">
-
     <label>Nombre:</label>
     <input name="nombre"
            value="{{ mascota.nombre }}"
@@ -13,30 +12,50 @@
 
     <label>Especie:</label>
     <select name="especie" class="form-control mb-2">
-        <option value="Perro"
-            {% if mascota.especie == "Perro" %}selected{% endif %}>
-            Perro
-        </option>
-        <option value="Gato"
-            {% if mascota.especie == "Gato" %}selected{% endif %}>
-            Gato
-        </option>
+        <option value="Perro" {% if mascota.especie == "Perro" %}selected{% endif %}>Perro</option>
+        <option value="Gato" {% if mascota.especie == "Gato" %}selected{% endif %}>Gato</option>
     </select>
 
     <label>Dueño:</label>
-    <select name="cliente_id" class="form-control mb-3">
+    <select name="cliente_id" class="form-control mb-2" required>
         {% for c in clientes %}
-        <option value="{{ c.id }}"
-            {% if c.id == mascota.cliente_id %}selected{% endif %}>
+        <option value="{{ c.id }}" {% if c.id == mascota.cliente_id %}selected{% endif %}>
             {{ c.nombre }}
         </option>
         {% endfor %}
     </select>
 
+    <label>Raza:</label>
+    <input name="raza" value="{{ mascota.raza or '' }}" class="form-control mb-2">
+
+    <label>Edad:</label>
+    <input type="number" name="edad" value="{{ mascota.edad or '' }}" class="form-control mb-2">
+
+    <label>Cumpleaños o fecha de adopción:</label>
+    <input type="date" name="fecha_especial" value="{{ mascota.fecha_especial or '' }}" class="form-control mb-2">
+
+    <label>Alergias:</label>
+    <textarea name="alergias" class="form-control mb-2">{{ mascota.alergias or "" }}</textarea>
+
+    <label>Género:</label>
+    <select name="genero" class="form-control mb-2">
+        <option value="">Sin especificar</option>
+        <option value="Macho" {% if mascota.genero == "Macho" %}selected{% endif %}>Macho</option>
+        <option value="Hembra" {% if mascota.genero == "Hembra" %}selected{% endif %}>Hembra</option>
+    </select>
+
+    <label>Talla:</label>
+    <input name="talla" value="{{ mascota.talla or '' }}" class="form-control mb-2">
+
+    <label>Color:</label>
+    <input name="color" value="{{ mascota.color or '' }}" class="form-control mb-2">
+
+    <label>Observaciones generales:</label>
+    <textarea name="notas" class="form-control mb-3">{{ mascota.notas or "" }}</textarea>
+
     <button class="btn btn-success w-100">
         Guardar Cambios
     </button>
-
 </form>
 
 {% endblock %}

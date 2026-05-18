@@ -4,18 +4,67 @@
 <h2>Mascotas</h2>
 
 <form method="POST" class="mb-4">
-    <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
+    <div class="row">
+        <div class="col-md-4">
+            <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
+        </div>
+        <div class="col-md-4">
+            <select name="especie" class="form-control mb-2">
+                <option value="Perro">Perro</option>
+                <option value="Gato">Gato</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <input name="raza" placeholder="Raza" class="form-control mb-2">
+        </div>
+        <div class="col-md-3">
+            <input type="number" name="edad" placeholder="Edad" class="form-control mb-2">
+        </div>
+        <div class="col-md-3">
+            <input type="date" name="fecha_especial" class="form-control mb-2" title="Cumpleaños o fecha de adopción">
+        </div>
+        <div class="col-md-3">
+            <select name="genero" class="form-control mb-2">
+                <option value="">Género</option>
+                <option value="Macho">Macho</option>
+                <option value="Hembra">Hembra</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input name="talla" placeholder="Talla" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="color" placeholder="Color" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="alergias" placeholder="Alergias" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="notas" placeholder="Observaciones generales" class="form-control mb-2">
+        </div>
+    </div>
 
-    <select name="especie" class="form-control mb-2">
-        <option value="Perro">Perro</option>
-        <option value="Gato">Gato</option>
-    </select>
+    <div class="border rounded p-3 mb-3">
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" value="1" id="nuevoCliente" name="nuevo_cliente">
+            <label class="form-check-label" for="nuevoCliente">Registrar cliente nuevo como dueño</label>
+        </div>
 
-    <select name="cliente_id" class="form-control mb-2">
-        {% for c in clientes %}
-        <option value="{{ c.id }}">{{ c.nombre }}</option>
-        {% endfor %}
-    </select>
+        <div id="clienteExistente">
+            <select name="cliente_id" class="form-control mb-2">
+                <option value="">Seleccionar dueño existente</option>
+                {% for c in clientes %}
+                <option value="{{ c.id }}">{{ c.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div id="clienteNuevo" class="d-none">
+            <input name="cliente_nombre" placeholder="Nombre del cliente" class="form-control mb-2">
+            <input name="cliente_telefono" placeholder="Teléfono" class="form-control mb-2">
+            <textarea name="cliente_direccion" placeholder="Dirección o casa" class="form-control mb-2"></textarea>
+        </div>
+    </div>
 
     <button class="btn btn-success">Agregar Mascota</button>
 </form>
@@ -25,6 +74,11 @@
         <th>ID</th>
         <th>Nombre</th>
         <th>Especie</th>
+        <th>Raza</th>
+        <th>Edad</th>
+        <th>Género</th>
+        <th>Talla</th>
+        <th>Color</th>
         <th>Dueño</th>
         <th>Acciones</th>
     </tr>
@@ -33,8 +87,18 @@
         <td>{{ m.id }}</td>
         <td>{{ m.nombre }}</td>
         <td>{{ m.especie }}</td>
+        <td>{{ m.raza or "" }}</td>
+        <td>{{ m.edad or "" }}</td>
+        <td>{{ m.genero or "" }}</td>
+        <td>{{ m.talla or "" }}</td>
+        <td>{{ m.color or "" }}</td>
         <td>{{ m.dueno }}</td>
         <td>
+            <a href="{{ url_for('historial_mascota', id=m.id) }}"
+               class="btn btn-sm btn-info">
+               Historial
+            </a>
+
             <a href="{{ url_for('editar_mascota', id=m.id) }}"
                 class="btn btn-sm btn-warning">
                 Editar
@@ -44,12 +108,23 @@
             <a href="{{ url_for('eliminar_mascota', id=m.id) }}"
                 class="btn btn-sm btn-danger"
                 onclick="return confirm('¿Eliminar mascota?')">
-                Eliminar ❌
+                Eliminar
             </a>
             {% endif %}
         </td>
     </tr>
     {% endfor %}
 </table>
+
+<script>
+const nuevoCliente = document.getElementById("nuevoCliente");
+const clienteExistente = document.getElementById("clienteExistente");
+const clienteNuevo = document.getElementById("clienteNuevo");
+
+nuevoCliente.addEventListener("change", function() {
+    clienteExistente.classList.toggle("d-none", nuevoCliente.checked);
+    clienteNuevo.classList.toggle("d-none", !nuevoCliente.checked);
+});
+</script>
 
 {% endblock %}

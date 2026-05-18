@@ -1,44 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+<meta charset="UTF-8">
+<title>Ticket #{{ venta.id }}</title>
 <style>
-body {
-    width: 280px;
-    font-family: monospace;
+@page {
+    size: 80mm auto;
+    margin: 3mm;
 }
-hr {
-    border-top: 1px dashed black;
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 74mm;
+    margin: 0 auto;
+    color: #000;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.center {
+    text-align: center;
+}
+
+.logo {
+    width: 48mm;
+    max-height: 26mm;
+    object-fit: contain;
+    margin-bottom: 1mm;
+}
+
+.line {
+    border: 0;
+    border-top: 1px dashed #000;
+    margin: 2mm 0;
+}
+
+.row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+}
+
+.item {
+    margin: 1.5mm 0;
+}
+
+.item-name {
+    font-weight: 700;
+}
+
+.total {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 2mm;
+}
+
+.thanks {
+    margin-top: 3mm;
+}
+
+p {
+    margin: 0.8mm 0;
+}
+
+@media print {
+    body {
+        width: 74mm;
+    }
 }
 </style>
 </head>
 <body onload="window.print()">
 
-<center>
-<h4>🐾 Mi Querido Lomito</h4>
-<p>Ticket #{{ venta.id }}</p>
-<p>{{ venta.fecha }}</p>
-</center>
+<div class="center">
+    <img class="logo"
+         src="{{ url_for('static', filename='img/Logo con redes sin fondo.png') }}"
+         alt="Mi Querido Lomito">
+    <p>Ticket #{{ venta.id }}</p>
+    <p>{{ venta.fecha }}</p>
+</div>
 
-<hr>
+<hr class="line">
+
+{% if venta.cliente %}
+<p><strong>Cliente:</strong> {{ venta.cliente }}</p>
+{% endif %}
+
+{% if venta.mascota %}
+<p><strong>Mascota:</strong> {{ venta.mascota }}</p>
+{% endif %}
+
+{% if venta.cliente or venta.mascota %}
+<hr class="line">
+{% endif %}
 
 {% for d in detalles %}
-<p>
-{{ d.nombre }}
-<br>
-{{ d.cantidad }} x ${{ d.subtotal / d.cantidad }}
-<br>
-Subtotal: ${{ d.subtotal }}
-</p>
-<hr>
+<div class="item">
+    <div class="item-name">{{ d.nombre }}</div>
+    <div class="row">
+        <span>{{ d.cantidad }} x ${{ "%.2f"|format(d.subtotal / d.cantidad) }}</span>
+        <span>${{ "%.2f"|format(d.subtotal) }}</span>
+    </div>
+</div>
 {% endfor %}
 
-<h3>Total: ${{ venta.total }}</h3>
+<hr class="line">
+
+<div class="row total">
+    <span>Total</span>
+    <span>${{ "%.2f"|format(venta.total) }}</span>
+</div>
 <p>Método: {{ venta.metodo_pago }}</p>
 
-<hr>
-<center>
-Gracias por su preferencia
-</center>
+<hr class="line">
+
+<div class="center">
+    <p>Horario de atención</p>
+    <p>Lunes a Sábado</p>
+    <p>10:00 am a 5:00 pm</p>
+    <p class="thanks">Gracias por su preferencia</p>
+</div>
 
 </body>
 </html>
