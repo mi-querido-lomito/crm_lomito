@@ -149,12 +149,33 @@ def asegurar_columna(cursor, tabla, columna, definicion):
         cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
 
 
+def asegurar_tabla_proveedores(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS proveedores (
+            id INT NOT NULL AUTO_INCREMENT,
+            nombre VARCHAR(150) NOT NULL,
+            direccion_contacto TEXT NULL,
+            telefono VARCHAR(50) NULL,
+            observaciones TEXT NULL,
+            PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_spanish2_ci
+    """)
+
+
 def asegurar_schema_crm():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    asegurar_tabla_proveedores(cursor)
 
     columnas = {
         "clientes": {
             "direccion": "TEXT NULL",
+        },
+        "productos": {
+            "proveedor_id": "INT NULL",
+        },
+        "insumos": {
+            "proveedor_id": "INT NULL",
         },
         "mascotas": {
             "raza": "VARCHAR(100) NULL",
@@ -773,6 +794,7 @@ def historial_mascota(id):
 
 @app.route("/productos", methods=["GET", "POST"])
 @login_required
+@rol_requerido(["admin"])
 def productos():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -780,19 +802,28 @@ def productos():
         nombre = request.form["nombre"]
         stock = request.form["stock"]
         precio = request.form["precio"]
+        proveedor_id = request.form.get("proveedor_id") or None
         codigo = generar_codigo_barra("PROD")
 
         cursor.execute(
-    "INSERT INTO productos (nombre, stock, precio, codigo_barras) VALUES (%s,%s,%s,%s)",
-    (nombre, stock, precio, codigo))
+            "INSERT INTO productos (nombre, stock, precio, proveedor_id, codigo_barras) VALUES (%s,%s,%s,%s,%s)",
+            (nombre, stock, precio, proveedor_id, codigo)
+        )
         mysql.connection.commit()
 
     rellenar_codigos_barras_faltantes("productos")
-    cursor.execute("SELECT * FROM productos")
+    cursor.execute("""
+        SELECT productos.*, proveedores.nombre AS proveedor_nombre
+        FROM productos
+        LEFT JOIN proveedores ON productos.proveedor_id = proveedores.id
+        ORDER BY productos.id DESC
+    """)
     data = cursor.fetchall()
+    cursor.execute("SELECT * FROM proveedores ORDER BY nombre")
+    proveedores = cursor.fetchall()
     cursor.close()
 
-    return render_template("productos.html", productos=data)
+    return render_template("productos.html", productos=data, proveedores=proveedores)
 
 # EDITAR PRODUCTO
 # -------------------
@@ -811,6 +842,7 @@ def editar_producto(id):
         nombre = request.form["nombre"]
         precio = request.form["precio"]
         stock = request.form["stock"]
+        proveedor_id = request.form.get("proveedor_id") or None
         codigo = (producto.get("codigo_barras") or "").strip()
         if not codigo:
             codigo = generar_codigo_barra("PROD")
@@ -820,16 +852,19 @@ def editar_producto(id):
             SET nombre=%s,
                 precio=%s,
                 stock=%s,
+                proveedor_id=%s,
                 codigo_barras=%s
             WHERE id=%s
-        """, (nombre, precio, stock, codigo, id))
+        """, (nombre, precio, stock, proveedor_id, codigo, id))
 
         mysql.connection.commit()
         flash("Producto actualizado correctamente")
         return redirect(url_for("productos"))
 
+    cursor.execute("SELECT * FROM proveedores ORDER BY nombre")
+    proveedores = cursor.fetchall()
     cursor.close()
-    return render_template("editar_producto.html", producto=producto)
+    return render_template("editar_producto.html", producto=producto, proveedores=proveedores)
 
 # EXPORTAR PRODUCTO A EXCEL
 # -------------------
@@ -840,7 +875,11 @@ def exportar_productos():
 
     rellenar_codigos_barras_faltantes("productos")
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute("SELECT * FROM productos")
+    cursor.execute("""
+        SELECT productos.*, proveedores.nombre AS proveedor_nombre
+        FROM productos
+        LEFT JOIN proveedores ON productos.proveedor_id = proveedores.id
+    """)
     productos = cursor.fetchall()
     cursor.close()
 
@@ -848,7 +887,7 @@ def exportar_productos():
     ws = wb.active
     ws.title = "Productos"
 
-    ws.append(["ID", "Nombre", "Stock", "Precio", "Código Barras"])
+    ws.append(["ID", "Nombre", "Stock", "Precio", "Proveedor", "Código Barras"])
 
     for p in productos:
         ws.append([
@@ -856,6 +895,7 @@ def exportar_productos():
             p["nombre"],
             p["stock"],
             float(p["precio"]),
+            p.get("proveedor_nombre", ""),
             p.get("codigo_barras", "")
         ])
 
@@ -1544,7 +1584,15 @@ def ticket_html(venta_id):
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    cursor.execute("SELECT * FROM ventas WHERE id=%s", (venta_id,))
+    cursor.execute("""
+        SELECT v.*,
+               c.nombre AS cliente,
+               m.nombre AS mascota
+        FROM ventas v
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN mascotas m ON v.mascota_id = m.id
+        WHERE v.id=%s
+    """, (venta_id,))
     venta = cursor.fetchone()
 
     cursor.execute("""
@@ -2024,24 +2072,31 @@ def insumos():
         nombre = request.form["nombre"]
         stock = request.form["stock"]
         costo = request.form["costo"]
-        proveedor = request.form["proveedor"]
+        proveedor_id = request.form.get("proveedor_id") or None
         codigo = generar_codigo_barra("INS")
 
         cursor.execute("""
-            INSERT INTO insumos (nombre, stock, costo, proveedor, codigo_barras)
+            INSERT INTO insumos (nombre, stock, costo, proveedor_id, codigo_barras)
             VALUES (%s, %s, %s, %s, %s)
-        """, (nombre, stock, costo, proveedor, codigo))
+        """, (nombre, stock, costo, proveedor_id, codigo))
 
         mysql.connection.commit()
         flash("Insumo agregado")
         return redirect(url_for("insumos"))
 
     rellenar_codigos_barras_faltantes("insumos")
-    cursor.execute("SELECT * FROM insumos ORDER BY fecha DESC")
+    cursor.execute("""
+        SELECT insumos.*, proveedores.nombre AS proveedor_nombre
+        FROM insumos
+        LEFT JOIN proveedores ON insumos.proveedor_id = proveedores.id
+        ORDER BY insumos.fecha DESC
+    """)
     insumos = cursor.fetchall()
+    cursor.execute("SELECT * FROM proveedores ORDER BY nombre")
+    proveedores = cursor.fetchall()
     cursor.close()
 
-    return render_template("insumos.html", insumos=insumos)
+    return render_template("insumos.html", insumos=insumos, proveedores=proveedores)
 
 
 # EDITAR INSUMO
@@ -2065,7 +2120,7 @@ def editar_insumo(id):
         nombre = request.form["nombre"]
         stock = request.form["stock"]
         costo = request.form["costo"]
-        proveedor = request.form["proveedor"]
+        proveedor_id = request.form.get("proveedor_id") or None
         codigo = (insumo.get("codigo_barras") or "").strip()
         if not codigo:
             codigo = generar_codigo_barra("INS")
@@ -2075,17 +2130,19 @@ def editar_insumo(id):
             SET nombre=%s,
                 stock=%s,
                 costo=%s,
-                proveedor=%s,
+                proveedor_id=%s,
                 codigo_barras=%s
             WHERE id=%s
-        """, (nombre, stock, costo, proveedor, codigo, id))
+        """, (nombre, stock, costo, proveedor_id, codigo, id))
 
         mysql.connection.commit()
         flash("Insumo actualizado correctamente")
         return redirect(url_for("insumos"))
 
+    cursor.execute("SELECT * FROM proveedores ORDER BY nombre")
+    proveedores = cursor.fetchall()
     cursor.close()
-    return render_template("editar_insumo.html", insumo=insumo)
+    return render_template("editar_insumo.html", insumo=insumo, proveedores=proveedores)
 
 
 # ELIMINAR INSUMO
@@ -2113,7 +2170,11 @@ def exportar_insumos():
 
     rellenar_codigos_barras_faltantes("insumos")
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute("SELECT * FROM insumos")
+    cursor.execute("""
+        SELECT insumos.*, proveedores.nombre AS proveedor_nombre
+        FROM insumos
+        LEFT JOIN proveedores ON insumos.proveedor_id = proveedores.id
+    """)
     insumos = cursor.fetchall()
     cursor.close()
 
@@ -2129,7 +2190,7 @@ def exportar_insumos():
             i["nombre"],
             i["stock"],
             float(i["costo"]),
-            i.get("proveedor", ""),
+            i.get("proveedor_nombre") or i.get("proveedor", ""),
             i.get("codigo_barras", "")
         ])
 
@@ -2216,6 +2277,108 @@ def etiquetas_insumos_carta():
 
 
 # -------------------
+# PROVEEDORES
+# -------------------
+@app.route("/proveedores", methods=["GET", "POST"])
+@login_required
+@rol_requerido(["admin"])
+def proveedores():
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    if request.method == "POST":
+        nombre = request.form["nombre"]
+        direccion_contacto = request.form.get("direccion_contacto")
+        telefono = request.form.get("telefono")
+        observaciones = request.form.get("observaciones")
+
+        cursor.execute("""
+            INSERT INTO proveedores (nombre, direccion_contacto, telefono, observaciones)
+            VALUES (%s, %s, %s, %s)
+        """, (nombre, direccion_contacto, telefono, observaciones))
+
+        mysql.connection.commit()
+        cursor.close()
+        flash("Proveedor agregado correctamente")
+        return redirect(url_for("proveedores"))
+
+    cursor.execute("""
+        SELECT proveedores.*,
+               (SELECT COUNT(*) FROM productos WHERE productos.proveedor_id = proveedores.id) AS productos_count,
+               (SELECT COUNT(*) FROM insumos WHERE insumos.proveedor_id = proveedores.id) AS insumos_count
+        FROM proveedores
+        ORDER BY proveedores.nombre
+    """)
+    proveedores = cursor.fetchall()
+    cursor.close()
+
+    return render_template("proveedores.html", proveedores=proveedores)
+
+
+@app.route("/editar_proveedor/<int:id>", methods=["GET", "POST"])
+@login_required
+@rol_requerido(["admin"])
+def editar_proveedor(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    cursor.execute("SELECT * FROM proveedores WHERE id=%s", (id,))
+    proveedor = cursor.fetchone()
+
+    if not proveedor:
+        cursor.close()
+        flash("Proveedor no encontrado")
+        return redirect(url_for("proveedores"))
+
+    if request.method == "POST":
+        nombre = request.form["nombre"]
+        direccion_contacto = request.form.get("direccion_contacto")
+        telefono = request.form.get("telefono")
+        observaciones = request.form.get("observaciones")
+
+        cursor.execute("""
+            UPDATE proveedores
+            SET nombre=%s,
+                direccion_contacto=%s,
+                telefono=%s,
+                observaciones=%s
+            WHERE id=%s
+        """, (nombre, direccion_contacto, telefono, observaciones, id))
+
+        mysql.connection.commit()
+        cursor.close()
+        flash("Proveedor actualizado correctamente")
+        return redirect(url_for("proveedores"))
+
+    cursor.close()
+    return render_template("editar_proveedor.html", proveedor=proveedor)
+
+
+@app.route("/eliminar_proveedor/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def eliminar_proveedor(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    cursor.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM productos WHERE proveedor_id=%s) AS productos_count,
+            (SELECT COUNT(*) FROM insumos WHERE proveedor_id=%s) AS insumos_count
+    """, (id, id))
+    uso = cursor.fetchone()
+
+    if uso and (uso["productos_count"] or uso["insumos_count"]):
+        cursor.close()
+        flash("No se puede eliminar: el proveedor está ligado a productos o insumos")
+        return redirect(url_for("proveedores"))
+
+    cursor.execute("DELETE FROM proveedores WHERE id=%s", (id,))
+    mysql.connection.commit()
+    cursor.close()
+
+    flash("Proveedor eliminado correctamente")
+    return redirect(url_for("proveedores"))
+
+
+# -------------------
 # GASTOS O SERVICIOS A PAGAR
 # -------------------
 @app.route("/gastos", methods=["GET", "POST"])
@@ -2250,4 +2413,4 @@ def gastos():
 
 # -------------------FINAL DE APP-------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3306, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

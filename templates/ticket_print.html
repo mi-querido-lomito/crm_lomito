@@ -63,6 +63,14 @@ body {
     margin-top: 3mm;
 }
 
+.copy {
+    page-break-after: always;
+}
+
+.copy:last-child {
+    page-break-after: auto;
+}
+
 p {
     margin: 0.8mm 0;
 }
@@ -76,18 +84,21 @@ p {
 </head>
 <body onload="window.print()">
 
+{% for copia in ["Cliente", "Negocio"] %}
+<section class="copy">
 <div class="center">
     <img class="logo"
          src="{{ url_for('static', filename='img/Logo con redes sin fondo.png') }}"
          alt="Mi Querido Lomito">
     <p>Ticket #{{ venta.id }}</p>
+    <p>Copia {{ copia }}</p>
     <p>{{ venta.fecha }}</p>
 </div>
 
 <hr class="line">
 
 {% if venta.cliente %}
-<p><strong>Cliente:</strong> {{ venta.cliente }}</p>
+<p><strong>Dueño:</strong> {{ venta.cliente }}</p>
 {% endif %}
 
 {% if venta.mascota %}
@@ -124,6 +135,8 @@ p {
     <p>10:00 am a 5:00 pm</p>
     <p class="thanks">Gracias por su preferencia</p>
 </div>
+</section>
+{% endfor %}
 
 </body>
 </html>

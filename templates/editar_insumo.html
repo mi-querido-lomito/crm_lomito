@@ -26,10 +26,15 @@
            placeholder="Costo"
            required>
 
-    <input name="proveedor"
-           value="{{ insumo.proveedor }}"
-           class="form-control mb-2"
-           placeholder="Proveedor">
+    <select name="proveedor_id" class="form-control mb-2">
+        <option value="">Sin proveedor</option>
+        {% for proveedor in proveedores %}
+        <option value="{{ proveedor.id }}"
+                {% if insumo.proveedor_id == proveedor.id %}selected{% endif %}>
+            {{ proveedor.nombre }}
+        </option>
+        {% endfor %}
+    </select>
 
     <input value="{{ insumo.codigo_barras or 'Se generará al guardar' }}"
            class="form-control mb-3"
