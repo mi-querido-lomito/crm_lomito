@@ -86,6 +86,9 @@ const manualItems = [
     {% endfor %}
 ].filter(function(item) {
     return item.codigo !== "";
+}).map(function(item) {
+    item.searchText = normalizeSearch(item.tipo + " " + item.nombre + " " + item.codigo + " " + item.detalle);
+    return item;
 });
 
 const manualSearch = document.getElementById("manualSearch");
@@ -119,10 +122,13 @@ function renderManualResults() {
         return;
     }
 
-    const matches = manualItems.filter(function(item) {
-        const text = normalizeSearch(item.tipo + " " + item.nombre + " " + item.codigo + " " + item.detalle);
-        return text.includes(query);
-    }).slice(0, 12);
+    const matches = [];
+
+    for (let index = 0; index < manualItems.length && matches.length < 12; index += 1) {
+        if (manualItems[index].searchText.includes(query)) {
+            matches.push(manualItems[index]);
+        }
+    }
 
     if (matches.length === 0) {
         const empty = document.createElement("div");
@@ -172,7 +178,7 @@ manualSearch.closest("form").addEventListener("submit", function(event) {
 <!-- ============================= -->
 <h4>Carrito</h4>
 
-<table class="table table-bordered table-striped">
+<table class="table table-bordered table-striped" data-search="false">
     <thead class="table-dark">
         <tr>
             <th>#</th>

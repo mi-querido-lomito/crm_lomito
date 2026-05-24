@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_mysqldb import MySQL
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
+from werkzeug.security import check_password_hash
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.platypus import Table
 import io
@@ -281,11 +282,13 @@ def login():
         password = request.form["password"]
 
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute("SELECT * FROM usuarios WHERE username=%s AND password=%s", (username, password))
+        cursor.execute("SELECT * FROM usuarios WHERE username=%s", (username,))
         user = cursor.fetchone()
         cursor.close()
 
-        if user:
+        password_hash = user.get("PASSWORD") if user else None
+
+        if password_hash and check_password_hash(password_hash, password):
             login_user(User(user))
             session["rol"] = user["rol"]
             return redirect(url_for("dashboard"))

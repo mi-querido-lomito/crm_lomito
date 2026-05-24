@@ -216,14 +216,21 @@ document.addEventListener("DOMContentLoaded", function() {
             status.textContent = visibleCount + " de " + rows.length + " resultados encontrados.";
         }
 
-        function filterRows() {
+        var searchableRows = rows.map(function(row) {
+            return {
+                element: row,
+                text: normalize(row.textContent)
+            };
+        });
+        var filterTimer = null;
+
+        function applyFilter() {
             var query = normalize(input.value.trim());
             var visibleCount = 0;
 
-            rows.forEach(function(row) {
-                var rowText = normalize(row.textContent);
-                var match = query === "" || rowText.includes(query);
-                row.classList.toggle("d-none", !match);
+            searchableRows.forEach(function(row) {
+                var match = query === "" || row.text.includes(query);
+                row.element.classList.toggle("d-none", !match);
 
                 if (match) {
                     visibleCount += 1;
@@ -234,14 +241,19 @@ document.addEventListener("DOMContentLoaded", function() {
             updateStatus(visibleCount);
         }
 
+        function filterRows() {
+            window.clearTimeout(filterTimer);
+            filterTimer = window.setTimeout(applyFilter, 120);
+        }
+
         input.addEventListener("input", filterRows);
         clearButton.addEventListener("click", function() {
             input.value = "";
-            filterRows();
+            applyFilter();
             input.focus();
         });
 
-        filterRows();
+        applyFilter();
     });
 });
 </script>

@@ -2,3 +2,6 @@ venv/
 __pycache__/
 *.pyc
 .env
+hash_usuarios.py
+migracion_password_hash.sql
+siste234_Mi_querido_lomito.sql
