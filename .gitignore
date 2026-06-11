@@ -6,3 +6,8 @@ hash_usuarios.py
 migracion_password_hash.sql
 siste234_Mi_querido_lomito.sql
 Ejecutar hash usuarios.txt
+
+# Imagenes de static/img no usadas por la app
+static/img/Logo con redes sin fondo.png
+static/img/Logo con redes.jpg
+static/img/Logo sin fondo.png

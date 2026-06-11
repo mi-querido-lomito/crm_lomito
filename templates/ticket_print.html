@@ -6,7 +6,7 @@
 <style>
 @page {
     size: 80mm auto;
-    margin: 3mm;
+    margin: 4mm 6mm;
 }
 
 * {
@@ -14,7 +14,7 @@
 }
 
 body {
-    width: 74mm;
+    width: 68mm;
     margin: 0 auto;
     color: #000;
     font-family: "Consolas", "Courier New", monospace;
@@ -27,10 +27,14 @@ body {
 }
 
 .logo {
-    width: 48mm;
-    max-height: 26mm;
+    display: block;
+    width: 64mm;
+    max-width: 100%;
+    max-height: 36mm;
+    margin: 0 auto 1mm;
     object-fit: contain;
-    margin-bottom: 1mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
 }
 
 .line {
@@ -43,6 +47,17 @@ body {
     display: flex;
     justify-content: space-between;
     gap: 2mm;
+    align-items: flex-start;
+}
+
+.row span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.row span:last-child {
+    flex-shrink: 0;
+    text-align: right;
 }
 
 .item {
@@ -77,7 +92,7 @@ p {
 
 @media print {
     body {
-        width: 74mm;
+        width: 68mm;
     }
 }
 </style>
@@ -88,7 +103,7 @@ p {
 <section class="copy">
 <div class="center">
     <img class="logo"
-         src="{{ url_for('static', filename='img/Logo con redes sin fondo.png') }}"
+         src="{{ url_for('static', filename='img/Logo con redes ticket.png') }}"
          alt="Mi Querido Lomito">
     <p>Ticket #{{ venta.id }}</p>
     <p>Copia {{ copia }}</p>
@@ -125,7 +140,7 @@ p {
     <span>Total</span>
     <span>${{ "%.2f"|format(venta.total) }}</span>
 </div>
-<p>Método: {{ venta.metodo_pago }}</p>
+<p>Pago con: {{ venta.metodo_pago }}</p>
 
 <hr class="line">
 
