@@ -10,7 +10,7 @@ from reportlab.graphics.barcode import code128
 from openpyxl import Workbook
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_mysqldb import MySQL
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.platypus import Table
@@ -253,6 +253,41 @@ def resumen_agenda_dia(cursor, fecha, mascota_id=None):
     }
 
 
+def cerrar_cajas_vencidas(cursor):
+    cursor.execute("""
+        SELECT *
+        FROM caja
+        WHERE estado='abierta'
+        AND DATE(fecha_apertura) < CURDATE()
+        ORDER BY fecha_apertura ASC
+    """)
+    cajas_vencidas = cursor.fetchall()
+
+    for caja in cajas_vencidas:
+        fecha_apertura = caja["fecha_apertura"]
+        cierre_dia = datetime.combine(fecha_apertura.date(), time(23, 59, 59))
+
+        cursor.execute("""
+            SELECT IFNULL(SUM(total),0) as total_ventas
+            FROM ventas
+            WHERE estado='activa'
+            AND fecha >= %s
+            AND fecha <= %s
+        """, (fecha_apertura, cierre_dia))
+        resultado = cursor.fetchone()
+        total_ventas = float(resultado["total_ventas"] or 0) if resultado else 0
+        monto_final = float(caja["monto_inicial"] or 0) + total_ventas
+
+        cursor.execute("""
+            UPDATE caja
+            SET fecha_cierre=%s,
+                monto_final=%s,
+                diferencia=0,
+                estado='cerrada'
+            WHERE id=%s
+        """, (cierre_dia, monto_final, caja["id"]))
+
+
 @app.before_request
 def verificar_schema_crm():
     global schema_checked
@@ -261,6 +296,35 @@ def verificar_schema_crm():
 
     asegurar_schema_crm()
     schema_checked = True
+
+
+@app.before_request
+def verificar_caja_diaria():
+    if request.endpoint in (None, "static", "login", "home", "logout"):
+        return
+
+    if not current_user.is_authenticated:
+        return
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cerrar_cajas_vencidas(cursor)
+    mysql.connection.commit()
+
+    cursor.execute("""
+        SELECT id
+        FROM caja
+        WHERE estado='abierta'
+        AND DATE(fecha_apertura)=CURDATE()
+        LIMIT 1
+    """)
+    caja_hoy = cursor.fetchone()
+    cursor.close()
+
+    if caja_hoy or request.endpoint == "abrir_caja":
+        return
+
+    if datetime.now().time() >= time(9, 30):
+        return redirect(url_for("abrir_caja", requerida=1))
 
 # -------------------
 # USER MODEL
@@ -374,8 +438,11 @@ def dashboard():
     # MÉTRICAS GENERALES (TODOS)
     # ==========================
 
-    cursor.execute("SELECT COUNT(*) as total FROM productos")
-    productos = cursor.fetchone()["total"]
+    if rol == "admin":
+        cursor.execute("SELECT COUNT(*) as total FROM productos")
+        productos = cursor.fetchone()["total"]
+    else:
+        productos = None
 
     # Citas de hoy
     cursor.execute("""
@@ -387,20 +454,35 @@ def dashboard():
     resumen_citas = cursor.fetchall()
 
     # Inventario bajo
-    cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 2")
-    bajo_stock = cursor.fetchall()
+    if rol == "admin":
+        cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 2")
+        bajo_stock = cursor.fetchall()
+    else:
+        bajo_stock = []
 
     # Estado de caja
-    cursor.execute("SELECT * FROM caja WHERE estado='abierta'")
+    cursor.execute("""
+        SELECT *
+        FROM caja
+        WHERE estado='abierta'
+        AND DATE(fecha_apertura)=CURDATE()
+        ORDER BY fecha_apertura DESC
+        LIMIT 1
+    """)
     caja_abierta = cursor.fetchone()
 
     # Citas próximas
     cursor.execute("""
-        SELECT c.id, c.fecha, m.nombre as mascota
+        SELECT c.id,
+               c.fecha,
+               m.nombre as mascota,
+               s.nombre as servicio
         FROM citas c
         JOIN mascotas m ON c.mascota_id = m.id
+        LEFT JOIN servicios s ON c.servicio_id = s.id
         WHERE c.estado='Pendiente'
-        AND c.fecha BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+        AND c.fecha >= CURDATE()
+        AND c.fecha < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
         ORDER BY c.fecha ASC
     """)
     citas_proximas = cursor.fetchall()
@@ -998,16 +1080,62 @@ def citas():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     if request.method == "POST":
+        mascota_opcion = request.form.get("mascota_opcion", "existente")
         mascota_id = request.form.get("mascota_id")
         fecha = request.form["fecha"]
         servicio_id = request.form.get("servicio_id") or None
         notas = request.form.get("notas")
         fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
 
-        if not mascota_id:
-            flash("Selecciona una mascota de la lista")
-            cursor.close()
-            return redirect(url_for("citas"))
+        if mascota_opcion == "nueva":
+            mascota_nombre = (request.form.get("mascota_nombre") or "").strip()
+            cliente_id = request.form.get("cliente_id") or None
+
+            if not mascota_nombre:
+                flash("El nombre de la nueva mascota es obligatorio")
+                cursor.close()
+                return redirect(url_for("citas"))
+
+            if not cliente_id:
+                cliente_nombre = (request.form.get("cliente_nombre") or "").strip()
+                cliente_telefono = (request.form.get("cliente_telefono") or "").strip()
+                cliente_direccion = (request.form.get("cliente_direccion") or "").strip()
+
+                if not cliente_nombre:
+                    flash("Selecciona un dueño o escribe el nombre del dueño nuevo")
+                    cursor.close()
+                    return redirect(url_for("citas"))
+
+                cursor.execute("""
+                    INSERT INTO clientes (nombre, telefono, direccion)
+                    VALUES (%s, %s, %s)
+                """, (cliente_nombre, cliente_telefono, cliente_direccion))
+                mysql.connection.commit()
+                cliente_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO mascotas
+                (nombre, especie, cliente_id, raza, edad, genero, talla, color, alergias, notas)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                mascota_nombre,
+                request.form.get("mascota_especie") or "Perro",
+                cliente_id,
+                request.form.get("mascota_raza"),
+                request.form.get("mascota_edad") or None,
+                request.form.get("mascota_genero"),
+                request.form.get("mascota_talla"),
+                request.form.get("mascota_color"),
+                request.form.get("mascota_alergias"),
+                request.form.get("mascota_notas"),
+            ))
+            mysql.connection.commit()
+            mascota_id = cursor.lastrowid
+        else:
+            if not mascota_id:
+                flash("Selecciona una mascota de la lista")
+                cursor.close()
+                return redirect(url_for("citas"))
 
         cursor.execute("""
             INSERT INTO citas (mascota_id, servicio_id, fecha, estado, notas)
@@ -1036,11 +1164,19 @@ def citas():
     cursor.execute("SELECT * FROM servicios ORDER BY nombre")
     servicios = cursor.fetchall()
 
+    cursor.execute("SELECT * FROM clientes ORDER BY nombre")
+    clientes = cursor.fetchall()
+
     agenda_hoy = resumen_agenda_dia(cursor, datetime.now())
 
     cursor.close()
 
-    return render_template("citas.html", citas=data, mascotas=mascotas, servicios=servicios, agenda_hoy=agenda_hoy)
+    return render_template("citas.html",
+                           citas=data,
+                           mascotas=mascotas,
+                           servicios=servicios,
+                           clientes=clientes,
+                           agenda_hoy=agenda_hoy)
 
 
 @app.route("/api/agenda_dia")
@@ -1904,11 +2040,23 @@ def abrir_caja():
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    cursor.execute("SELECT * FROM caja WHERE estado='abierta'")
+    cerrar_cajas_vencidas(cursor)
+    mysql.connection.commit()
+
+    cursor.execute("""
+        SELECT *
+        FROM caja
+        WHERE estado='abierta'
+        AND DATE(fecha_apertura)=CURDATE()
+        ORDER BY fecha_apertura DESC
+        LIMIT 1
+    """)
     caja_abierta = cursor.fetchone()
 
     if caja_abierta:
-        flash("Ya existe una caja abierta")
+        cursor.close()
+        if session.get("rol") == "admin":
+            flash("Ya existe una caja abierta")
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
@@ -1922,10 +2070,12 @@ def abrir_caja():
 
         mysql.connection.commit()
         flash("Caja abierta correctamente")
+        cursor.close()
         return redirect(url_for("dashboard"))
 
     cursor.close()
-    return render_template("abrir_caja.html")
+    return render_template("abrir_caja.html",
+                           caja_requerida=request.args.get("requerida") == "1")
 
 
 # Cerrar caja con monto final y diferencias
@@ -1937,10 +2087,18 @@ def cerrar_caja():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     # Buscar caja abierta
-    cursor.execute("SELECT * FROM caja WHERE estado='abierta'")
+    cursor.execute("""
+        SELECT *
+        FROM caja
+        WHERE estado='abierta'
+        AND DATE(fecha_apertura)=CURDATE()
+        ORDER BY fecha_apertura DESC
+        LIMIT 1
+    """)
     caja = cursor.fetchone()
 
     if not caja:
+        cursor.close()
         flash("No hay caja abierta")
         return redirect(url_for("dashboard"))
 
@@ -1973,12 +2131,16 @@ def cerrar_caja():
 
             mysql.connection.commit()
 
-            flash(f"Caja cerrada correctamente. Diferencia: ${diferencia}")
+            if session.get("rol") == "admin":
+                flash(f"Caja cerrada correctamente. Diferencia: ${diferencia}")
+            else:
+                flash("Caja cerrada correctamente")
 
         except Exception as e:
             mysql.connection.rollback()
             flash(f"Error al cerrar caja: {str(e)}")
 
+        cursor.close()
         return redirect(url_for("dashboard"))
 
     cursor.close()

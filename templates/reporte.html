@@ -21,7 +21,7 @@
 </form>
 
 {% if data %}
-<div class="row mb-3">
+<div class="row mb-4">
     <div class="col-md-6">
         <div class="border rounded p-3">
             <strong>Tickets generados:</strong> {{ data.ventas }}<br>
@@ -30,8 +30,8 @@
     </div>
 </div>
 
-<h4>Totales por método de pago</h4>
-<table class="table table-bordered table-striped">
+<h4 class="mt-4 mb-3">Totales por método de pago</h4>
+<table class="table table-bordered table-striped" data-search="false">
     <thead class="table-dark">
         <tr>
             <th>Método</th>
@@ -54,8 +54,8 @@
     </tbody>
 </table>
 
-<h4>Tickets del día</h4>
-<table class="table table-bordered table-striped">
+<h4 class="mt-5 mb-3">Tickets del día</h4>
+<table class="table table-bordered table-striped" data-search="false">
     <thead class="table-dark">
         <tr>
             <th>Ticket</th>

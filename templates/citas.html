@@ -9,23 +9,136 @@
 </div>
 
 <form method="POST" class="mb-4" id="citaForm">
+    <input type="hidden" name="mascota_opcion" id="mascotaOpcion" value="existente">
     <input type="hidden" name="mascota_id" id="mascota_id">
 
-    <div class="position-relative mb-2">
-        <input type="text"
-               id="mascotaSearch"
-               class="form-control"
-               autocomplete="off"
-               placeholder="Buscar mascota por nombre o dueño">
+    <div class="btn-group mb-3" role="group" aria-label="Tipo de mascota para la cita">
+        <input type="radio"
+               class="btn-check"
+               name="tipo_mascota"
+               id="tipoMascotaExistente"
+               value="existente"
+               checked>
+        <label class="btn btn-outline-primary" for="tipoMascotaExistente">
+            Mascota registrada
+        </label>
 
-        <div id="mascotaResults"
-             class="list-group position-absolute w-100 shadow-sm d-none"
-             style="z-index: 1050; max-height: 260px; overflow-y: auto;">
+        <input type="radio"
+               class="btn-check"
+               name="tipo_mascota"
+               id="tipoMascotaNueva"
+               value="nueva">
+        <label class="btn btn-outline-primary" for="tipoMascotaNueva">
+            Mascota nueva
+        </label>
+    </div>
+
+    <div id="mascotaExistenteBlock">
+        <div class="position-relative mb-2">
+            <input type="text"
+                   id="mascotaSearch"
+                   class="form-control"
+                   autocomplete="off"
+                   placeholder="Buscar mascota por nombre o dueño">
+
+            <div id="mascotaResults"
+                 class="list-group position-absolute w-100 shadow-sm d-none"
+                 style="z-index: 1050; max-height: 260px; overflow-y: auto;">
+            </div>
+        </div>
+
+        <div id="mascotaSelected" class="form-text mb-2">
+            Selecciona una mascota para agendar la cita.
         </div>
     </div>
 
-    <div id="mascotaSelected" class="form-text mb-2">
-        Selecciona una mascota para agendar la cita.
+    <div id="mascotaNuevaBlock" class="border rounded p-3 mb-3 d-none">
+        <h5 class="mb-3">Nueva mascota</h5>
+
+        <input type="text"
+               name="mascota_nombre"
+               id="mascotaNombre"
+               class="form-control mb-2"
+               placeholder="Nombre de la mascota">
+
+        <select name="mascota_especie" class="form-control mb-2">
+            <option value="Perro">Perro</option>
+            <option value="Gato">Gato</option>
+        </select>
+
+        <input type="text"
+               name="mascota_raza"
+               class="form-control mb-2"
+               placeholder="Raza">
+
+        <input type="number"
+               name="mascota_edad"
+               min="0"
+               class="form-control mb-2"
+               placeholder="Edad">
+
+        <select name="mascota_genero" class="form-control mb-2">
+            <option value="">Género</option>
+            <option value="Macho">Macho</option>
+            <option value="Hembra">Hembra</option>
+        </select>
+
+        <input type="text"
+               name="mascota_talla"
+               class="form-control mb-2"
+               placeholder="Talla">
+
+        <input type="text"
+               name="mascota_color"
+               class="form-control mb-2"
+               placeholder="Color">
+
+        <input type="text"
+               name="mascota_alergias"
+               class="form-control mb-2"
+               placeholder="Alergias">
+
+        <textarea name="mascota_notas"
+                  class="form-control mb-3"
+                  placeholder="Notas de la mascota"></textarea>
+
+        <h5 class="mb-2">Dueño</h5>
+        <input type="hidden" name="cliente_id" id="cliente_id">
+
+        <div class="position-relative mb-2">
+            <input type="text"
+                   id="clienteSearch"
+                   class="form-control"
+                   autocomplete="off"
+                   placeholder="Buscar dueño por nombre, celular o dirección">
+
+            <div id="clienteResults"
+                 class="list-group position-absolute w-100 shadow-sm d-none"
+                 style="z-index: 1050; max-height: 260px; overflow-y: auto;">
+            </div>
+        </div>
+
+        <div id="clienteSelected" class="form-text mb-2">
+            Selecciona un dueño existente o escribe los datos para crear uno nuevo.
+        </div>
+
+        <input type="text"
+               name="cliente_nombre"
+               id="clienteNombre"
+               class="form-control mb-2"
+               placeholder="Nombre del dueño nuevo">
+
+        <input type="text"
+               name="cliente_telefono"
+               id="clienteTelefono"
+               class="form-control mb-2"
+               placeholder="Celular">
+
+        <input type="text"
+               name="cliente_direccion"
+               id="clienteDireccion"
+               class="form-control"
+               placeholder="Dirección">
     </div>
 
     <select name="servicio_id" id="servicio_id" class="form-control mb-2" required>
@@ -93,9 +206,22 @@ const servicioCita = document.getElementById("servicio_id");
 const mascotaCita = document.getElementById("mascota_id");
 const agendaEstimacion = document.getElementById("agendaEstimacion");
 const citaForm = document.getElementById("citaForm");
+const mascotaOpcion = document.getElementById("mascotaOpcion");
+const tipoMascotaExistente = document.getElementById("tipoMascotaExistente");
+const tipoMascotaNueva = document.getElementById("tipoMascotaNueva");
+const mascotaExistenteBlock = document.getElementById("mascotaExistenteBlock");
+const mascotaNuevaBlock = document.getElementById("mascotaNuevaBlock");
 const mascotaSearch = document.getElementById("mascotaSearch");
 const mascotaResults = document.getElementById("mascotaResults");
 const mascotaSelected = document.getElementById("mascotaSelected");
+const mascotaNombre = document.getElementById("mascotaNombre");
+const clienteId = document.getElementById("cliente_id");
+const clienteSearch = document.getElementById("clienteSearch");
+const clienteResults = document.getElementById("clienteResults");
+const clienteSelected = document.getElementById("clienteSelected");
+const clienteNombre = document.getElementById("clienteNombre");
+const clienteTelefono = document.getElementById("clienteTelefono");
+const clienteDireccion = document.getElementById("clienteDireccion");
 
 const mascotasCita = [
     {% for m in mascotas %}
@@ -110,12 +236,30 @@ const mascotasCita = [
     return mascota;
 });
 
+const clientesCita = [
+    {% for c in clientes %}
+    {
+        id: {{ c.id }},
+        nombre: {{ c.nombre|tojson }},
+        telefono: {{ (c.telefono or "")|tojson }},
+        direccion: {{ (c.direccion or "")|tojson }}
+    },
+    {% endfor %}
+].map(function(cliente) {
+    cliente.searchText = normalizeSearch(cliente.nombre + " " + cliente.telefono + " " + cliente.direccion);
+    return cliente;
+});
+
 function normalizeSearch(value) {
     return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function hideMascotaResults() {
     mascotaResults.classList.add("d-none");
+}
+
+function hideClienteResults() {
+    clienteResults.classList.add("d-none");
 }
 
 function selectMascota(mascota) {
@@ -170,7 +314,97 @@ function renderMascotaResults() {
     mascotaResults.classList.remove("d-none");
 }
 
+function clienteDetalle(cliente) {
+    const datos = [];
+
+    if (cliente.telefono) {
+        datos.push("Celular: " + cliente.telefono);
+    }
+
+    if (cliente.direccion) {
+        datos.push("Dirección: " + cliente.direccion);
+    }
+
+    return datos.length ? datos.join(" | ") : "Sin celular ni dirección";
+}
+
+function selectCliente(cliente) {
+    clienteId.value = cliente.id;
+    clienteSearch.value = cliente.nombre + " - " + clienteDetalle(cliente);
+    clienteSelected.textContent = "Dueño seleccionado: " + cliente.nombre;
+    clienteSelected.className = "form-text text-success mb-2";
+    clienteNombre.value = "";
+    clienteTelefono.value = "";
+    clienteDireccion.value = "";
+    hideClienteResults();
+}
+
+function renderClienteResults() {
+    const rawQuery = clienteSearch.value.trim();
+    const query = normalizeSearch(rawQuery);
+    clienteId.value = "";
+    clienteNombre.value = rawQuery;
+    clienteSelected.textContent = "Selecciona un dueño existente o escribe los datos para crear uno nuevo.";
+    clienteSelected.className = "form-text mb-2";
+    clienteResults.innerHTML = "";
+
+    if (query.length === 0) {
+        clienteNombre.value = "";
+        hideClienteResults();
+        return;
+    }
+
+    const matches = [];
+    for (let index = 0; index < clientesCita.length && matches.length < 12; index += 1) {
+        if (clientesCita[index].searchText.includes(query)) {
+            matches.push(clientesCita[index]);
+        }
+    }
+
+    if (matches.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "list-group-item text-muted";
+        empty.textContent = "No se encontraron dueños. Se creará uno nuevo si completas los datos.";
+        clienteResults.appendChild(empty);
+        clienteResults.classList.remove("d-none");
+        return;
+    }
+
+    matches.forEach(function(cliente) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "list-group-item list-group-item-action";
+        button.innerHTML = "<strong>" + cliente.nombre + "</strong><br><small>" + clienteDetalle(cliente) + "</small>";
+        button.addEventListener("click", function() {
+            selectCliente(cliente);
+        });
+        clienteResults.appendChild(button);
+    });
+
+    clienteResults.classList.remove("d-none");
+}
+
+function actualizarTipoMascota() {
+    const esNueva = tipoMascotaNueva.checked;
+    mascotaOpcion.value = esNueva ? "nueva" : "existente";
+    mascotaExistenteBlock.classList.toggle("d-none", esNueva);
+    mascotaNuevaBlock.classList.toggle("d-none", !esNueva);
+
+    if (esNueva) {
+        mascotaCita.value = "";
+        hideMascotaResults();
+    }
+
+    actualizarEstimacionAgenda();
+}
+
 async function actualizarEstimacionAgenda() {
+    if (mascotaOpcion.value === "nueva") {
+        agendaEstimacion.textContent = "La mascota nueva todavía no tiene historial. Puedes agendarla y el tiempo real se guardará al finalizar su primera cita.";
+        agendaEstimacion.className = "form-text text-info mb-2";
+        return;
+    }
+
     if (!fechaCita.value || !mascotaCita.value) {
         agendaEstimacion.textContent = "Elige mascota y fecha para estimar espacio disponible por historial de la mascota.";
         agendaEstimacion.className = "form-text mb-2";
@@ -198,23 +432,47 @@ async function actualizarEstimacionAgenda() {
 fechaCita.addEventListener("change", actualizarEstimacionAgenda);
 servicioCita.addEventListener("change", actualizarEstimacionAgenda);
 mascotaCita.addEventListener("change", actualizarEstimacionAgenda);
+tipoMascotaExistente.addEventListener("change", actualizarTipoMascota);
+tipoMascotaNueva.addEventListener("change", actualizarTipoMascota);
 mascotaSearch.addEventListener("input", renderMascotaResults);
 mascotaSearch.addEventListener("focus", renderMascotaResults);
+clienteSearch.addEventListener("input", renderClienteResults);
+clienteSearch.addEventListener("focus", renderClienteResults);
 
 document.addEventListener("click", function(event) {
     if (!mascotaSearch.contains(event.target) && !mascotaResults.contains(event.target)) {
         hideMascotaResults();
     }
+
+    if (!clienteSearch.contains(event.target) && !clienteResults.contains(event.target)) {
+        hideClienteResults();
+    }
 });
 
 citaForm.addEventListener("submit", function(event) {
-    if (!mascotaCita.value) {
+    if (mascotaOpcion.value === "existente" && !mascotaCita.value) {
         event.preventDefault();
         mascotaSelected.textContent = "Elige una mascota de la lista antes de agendar.";
         mascotaSelected.className = "form-text text-danger mb-2";
         mascotaSearch.focus();
+        return;
+    }
+
+    if (mascotaOpcion.value === "nueva" && !mascotaNombre.value.trim()) {
+        event.preventDefault();
+        mascotaNombre.focus();
+        return;
+    }
+
+    if (mascotaOpcion.value === "nueva" && !clienteId.value && !clienteNombre.value.trim()) {
+        event.preventDefault();
+        clienteSelected.textContent = "Selecciona un dueño existente o escribe el nombre del dueño nuevo.";
+        clienteSelected.className = "form-text text-danger mb-2";
+        clienteSearch.focus();
     }
 });
+
+actualizarTipoMascota();
 </script>
 
 {% endblock %}
