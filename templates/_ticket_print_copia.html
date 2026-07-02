@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Ticket #{{ venta.id }} - {{ copia }}</title>
+<style>
+@page {
+    size: 80mm auto;
+    margin: 4mm 6mm;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 68mm;
+    margin: 0 auto;
+    color: #000;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.center {
+    text-align: center;
+}
+
+.logo {
+    display: block;
+    width: 64mm;
+    max-width: 100%;
+    max-height: 36mm;
+    margin: 0 auto 1mm;
+    object-fit: contain;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.line {
+    border: 0;
+    border-top: 1px dashed #000;
+    margin: 2mm 0;
+}
+
+.row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+    align-items: flex-start;
+}
+
+.row span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.row span:last-child {
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.item {
+    margin: 1.5mm 0;
+}
+
+.item-name {
+    font-weight: 700;
+}
+
+.total {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 2mm;
+}
+
+.thanks {
+    margin-top: 3mm;
+}
+
+.screen-actions {
+    font-family: Arial, sans-serif;
+    margin: 10px 0;
+    text-align: center;
+}
+
+.screen-actions button,
+.screen-actions a {
+    display: inline-block;
+    border: 1px solid #222;
+    border-radius: 4px;
+    color: #111;
+    background: #fff;
+    padding: 8px 10px;
+    text-decoration: none;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+p {
+    margin: 0.8mm 0;
+}
+
+@media print {
+    body {
+        width: 68mm;
+    }
+
+    .screen-actions {
+        display: none;
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="screen-actions">
+    <button type="button" onclick="window.print()">Imprimir copia {{ copia }}</button>
+    <a href="{{ siguiente_url }}">Continuar</a>
+</div>
+
+<section>
+<div class="center">
+    <img class="logo"
+         src="{{ url_for('static', filename='img/Logo con redes ticket.png') }}"
+         alt="Mi Querido Lomito">
+    <p>Ticket #{{ venta.id }}</p>
+    <p>Copia {{ copia }}</p>
+    <p>{{ venta.fecha }}</p>
+</div>
+
+<hr class="line">
+
+{% if venta.cliente %}
+<p><strong>Dueño:</strong> {{ venta.cliente }}</p>
+{% endif %}
+
+{% if venta.mascota %}
+<p><strong>Mascota:</strong> {{ venta.mascota }}</p>
+{% endif %}
+
+{% if venta.cliente or venta.mascota %}
+<hr class="line">
+{% endif %}
+
+{% for d in detalles %}
+<div class="item">
+    <div class="item-name">{{ d.nombre }}</div>
+    <div class="row">
+        <span>{{ d.cantidad }} x ${{ "%.2f"|format(d.subtotal / d.cantidad) }}</span>
+        <span>${{ "%.2f"|format(d.subtotal) }}</span>
+    </div>
+</div>
+{% endfor %}
+
+<hr class="line">
+
+<div class="row total">
+    <span>Total</span>
+    <span>${{ "%.2f"|format(venta.total) }}</span>
+</div>
+<p>Pago con: {{ venta.metodo_pago }}</p>
+
+<hr class="line">
+
+<div class="center">
+    <p>Horario de atención</p>
+    <p>Lunes a Sábado</p>
+    <p>10:00 am a 5:00 pm</p>
+    <p class="thanks">Gracias por su preferencia</p>
+</div>
+</section>
+
+<script>
+let printStarted = false;
+let redirected = false;
+
+function continueFlow() {
+    if (redirected) {
+        return;
+    }
+
+    redirected = true;
+    window.location.href = {{ siguiente_url|tojson }};
+}
+
+window.addEventListener("afterprint", function() {
+    if (printStarted) {
+        window.setTimeout(continueFlow, 300);
+    }
+});
+
+window.addEventListener("load", function() {
+    window.setTimeout(function() {
+        printStarted = true;
+        window.print();
+    }, 300);
+});
+</script>
+
+</body>
+</html>

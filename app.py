@@ -206,47 +206,41 @@ def asegurar_schema_crm():
     cursor.close()
 
 
-def estimar_tiempo_servicio(cursor, servicio_id):
-    if not servicio_id:
+def estimar_tiempo_mascota(cursor, mascota_id):
+    if not mascota_id:
         return 60
 
     cursor.execute("""
         SELECT AVG(tiempo_servicio_min) AS promedio
         FROM citas
-        WHERE servicio_id=%s
+        WHERE mascota_id=%s
         AND estado='Completada'
         AND tiempo_servicio_min IS NOT NULL
         AND tiempo_servicio_min > 0
-    """, (servicio_id,))
+    """, (mascota_id,))
     promedio = cursor.fetchone()
 
     if promedio and promedio.get("promedio"):
         return int(round(float(promedio["promedio"])))
 
-    cursor.execute("SELECT duracion_min FROM servicios WHERE id=%s", (servicio_id,))
-    servicio = cursor.fetchone()
-
-    if servicio and servicio.get("duracion_min"):
-        return int(servicio["duracion_min"])
-
     return 60
 
 
-def resumen_agenda_dia(cursor, fecha, servicio_id=None):
+def resumen_agenda_dia(cursor, fecha, mascota_id=None):
     inicio = datetime.combine(fecha.date(), time(10, 0))
     fin = datetime.combine(fecha.date(), time(17, 0))
     jornada_min = int((fin - inicio).total_seconds() / 60)
-    nuevo_min = estimar_tiempo_servicio(cursor, servicio_id)
+    nuevo_min = estimar_tiempo_mascota(cursor, mascota_id)
 
     cursor.execute("""
-        SELECT servicio_id
+        SELECT mascota_id
         FROM citas
         WHERE DATE(fecha)=DATE(%s)
         AND estado='Pendiente'
     """, (fecha,))
     citas_dia = cursor.fetchall()
 
-    ocupado = sum(estimar_tiempo_servicio(cursor, cita.get("servicio_id")) for cita in citas_dia)
+    ocupado = sum(estimar_tiempo_mascota(cursor, cita.get("mascota_id")) for cita in citas_dia)
 
     return {
         "inicio": inicio,
@@ -1004,16 +998,14 @@ def citas():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     if request.method == "POST":
-        mascota_id = request.form["mascota_id"]
+        mascota_id = request.form.get("mascota_id")
         fecha = request.form["fecha"]
         servicio_id = request.form.get("servicio_id") or None
         notas = request.form.get("notas")
         fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
 
-        agenda = resumen_agenda_dia(cursor, fecha_convertida, servicio_id)
-
-        if not agenda["cabe"]:
-            flash("La cita no cabe en la jornada laboral de 10:00 a 17:00 con el tiempo estimado actual")
+        if not mascota_id:
+            flash("Selecciona una mascota de la lista")
             cursor.close()
             return redirect(url_for("citas"))
 
@@ -1022,6 +1014,7 @@ def citas():
             VALUES (%s, %s, %s, 'Pendiente', %s)
         """, (mascota_id, servicio_id, fecha_convertida, notas))
         mysql.connection.commit()
+        flash("Cita agendada correctamente")
 
     cursor.execute("""
         SELECT citas.*, mascotas.nombre as mascota, servicios.nombre as servicio
@@ -1032,7 +1025,12 @@ def citas():
     """)
     data = cursor.fetchall()
 
-    cursor.execute("SELECT * FROM mascotas")
+    cursor.execute("""
+        SELECT mascotas.*, clientes.nombre as dueno
+        FROM mascotas
+        LEFT JOIN clientes ON mascotas.cliente_id = clientes.id
+        ORDER BY mascotas.nombre
+    """)
     mascotas = cursor.fetchall()
 
     cursor.execute("SELECT * FROM servicios ORDER BY nombre")
@@ -1049,7 +1047,7 @@ def citas():
 @login_required
 def api_agenda_dia():
     fecha_raw = request.args.get("fecha")
-    servicio_id = request.args.get("servicio_id") or None
+    mascota_id = request.args.get("mascota_id") or None
 
     if not fecha_raw:
         return {"ok": False, "error": "Fecha requerida"}
@@ -1060,7 +1058,7 @@ def api_agenda_dia():
         return {"ok": False, "error": "Formato de fecha inválido"}
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    agenda = resumen_agenda_dia(cursor, fecha, servicio_id)
+    agenda = resumen_agenda_dia(cursor, fecha, mascota_id)
     cursor.close()
 
     return {
@@ -1162,9 +1160,15 @@ def convertir_cita(id):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     cursor.execute("""
-        SELECT citas.*, mascotas.nombre as mascota, servicios.nombre as servicio, servicios.precio
+        SELECT citas.*,
+               mascotas.nombre as mascota,
+               mascotas.cliente_id,
+               clientes.nombre as cliente,
+               servicios.nombre as servicio,
+               servicios.precio
         FROM citas
         JOIN mascotas ON citas.mascota_id = mascotas.id
+        LEFT JOIN clientes ON mascotas.cliente_id = clientes.id
         LEFT JOIN servicios ON citas.servicio_id = servicios.id
         WHERE citas.id=%s
     """, (id,))
@@ -1178,6 +1182,13 @@ def convertir_cita(id):
     if request.method == "POST":
         observaciones = request.form.get("observaciones")
         tiempo = request.form.get("tiempo_servicio_min") or None
+        citas_mismo_dueno_ids = []
+
+        for cita_relacionada_id in request.form.getlist("citas_mismo_dueno"):
+            try:
+                citas_mismo_dueno_ids.append(int(cita_relacionada_id))
+            except (TypeError, ValueError):
+                continue
 
         cursor.execute("""
             UPDATE citas
@@ -1187,15 +1198,49 @@ def convertir_cita(id):
             WHERE id=%s
         """, (observaciones, tiempo, id))
 
+        citas_mismo_dueno = []
+        if citas_mismo_dueno_ids and cita.get("cliente_id"):
+            placeholders = ", ".join(["%s"] * len(citas_mismo_dueno_ids))
+            params = tuple(citas_mismo_dueno_ids) + (id, cita["cliente_id"], cita["fecha"])
+
+            cursor.execute(f"""
+                SELECT c.id,
+                       c.servicio_id,
+                       s.nombre AS servicio,
+                       s.precio
+                FROM citas c
+                JOIN mascotas m ON c.mascota_id = m.id
+                LEFT JOIN servicios s ON c.servicio_id = s.id
+                WHERE c.id IN ({placeholders})
+                AND c.id<>%s
+                AND m.cliente_id=%s
+                AND DATE(c.fecha)=DATE(%s)
+                AND c.estado='Pendiente'
+            """, params)
+            citas_mismo_dueno = cursor.fetchall()
+
+            if citas_mismo_dueno:
+                ids_validados = [cita_relacionada["id"] for cita_relacionada in citas_mismo_dueno]
+                placeholders_validados = ", ".join(["%s"] * len(ids_validados))
+                cursor.execute(f"""
+                    UPDATE citas
+                    SET estado='Completada',
+                        observaciones=CASE
+                            WHEN observaciones IS NULL OR observaciones = '' THEN %s
+                            ELSE observaciones
+                        END
+                    WHERE id IN ({placeholders_validados})
+                """, (observaciones, *ids_validados))
+
         mysql.connection.commit()
 
         session["venta_mascota_id"] = cita["mascota_id"]
         session["venta_cita_id"] = cita["id"]
 
-        if cita.get("servicio_id"):
-            if "carrito" not in session:
-                session["carrito"] = []
+        if "carrito" not in session:
+            session["carrito"] = []
 
+        if cita.get("servicio_id"):
             session["carrito"].append({
                 "tipo": "servicio",
                 "id": cita["servicio_id"],
@@ -1204,14 +1249,46 @@ def convertir_cita(id):
                 "cantidad": 1,
                 "subtotal": float(cita["precio"] or 0),
             })
-            session.modified = True
+
+        for cita_relacionada in citas_mismo_dueno:
+            if cita_relacionada.get("servicio_id"):
+                session["carrito"].append({
+                    "tipo": "servicio",
+                    "id": cita_relacionada["servicio_id"],
+                    "nombre": cita_relacionada["servicio"],
+                    "precio": float(cita_relacionada["precio"] or 0),
+                    "cantidad": 1,
+                    "subtotal": float(cita_relacionada["precio"] or 0),
+                })
+
+        session.modified = True
 
         flash("Cita completada. Revisa el carrito y finaliza el cobro.")
         cursor.close()
         return redirect(url_for("ventas"))
 
+    citas_mismo_dueno = []
+    if cita.get("cliente_id"):
+        cursor.execute("""
+            SELECT c.id,
+                   c.fecha,
+                   m.nombre AS mascota,
+                   s.nombre AS servicio
+            FROM citas c
+            JOIN mascotas m ON c.mascota_id = m.id
+            LEFT JOIN servicios s ON c.servicio_id = s.id
+            WHERE c.id<>%s
+            AND m.cliente_id=%s
+            AND DATE(c.fecha)=DATE(%s)
+            AND c.estado='Pendiente'
+            ORDER BY c.fecha
+        """, (id, cita["cliente_id"], cita["fecha"]))
+        citas_mismo_dueno = cursor.fetchall()
+
     cursor.close()
-    return render_template("finalizar_cita.html", cita=cita)
+    return render_template("finalizar_cita.html",
+                           cita=cita,
+                           citas_mismo_dueno=citas_mismo_dueno)
 
 # -------------------
 # VENTAS
@@ -1578,10 +1655,7 @@ def generar_ticket(venta_id):
 # -------------------
 # Impresión de Ticket 58mm / 80mm
 # -------------------
-@app.route("/ticket_html/<int:venta_id>")
-@login_required
-def ticket_html(venta_id):
-
+def cargar_ticket_venta(venta_id):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     cursor.execute("""
@@ -1596,7 +1670,7 @@ def ticket_html(venta_id):
     venta = cursor.fetchone()
 
     cursor.execute("""
-        SELECT 
+        SELECT
             d.tipo,
             d.cantidad,
             d.subtotal,
@@ -1606,13 +1680,48 @@ def ticket_html(venta_id):
         LEFT JOIN servicios s ON d.servicio_id=s.id
         WHERE venta_id=%s
     """, (venta_id,))
-
     detalles = cursor.fetchall()
     cursor.close()
 
-    return render_template("ticket_print.html",
+    return venta, detalles
+
+
+@app.route("/ticket_html/<int:venta_id>")
+@login_required
+def ticket_html(venta_id):
+    return redirect(url_for("ticket_html_copia", venta_id=venta_id, copia="cliente"))
+
+
+@app.route("/ticket_html/<int:venta_id>/<copia>")
+@login_required
+def ticket_html_copia(venta_id, copia):
+    if copia not in ("cliente", "negocio"):
+        abort(404)
+
+    venta, detalles = cargar_ticket_venta(venta_id)
+    if not venta:
+        flash("Venta no encontrada")
+        return redirect(url_for("ventas"))
+
+    if copia == "cliente":
+        siguiente_url = url_for("ticket_html_copia", venta_id=venta_id, copia="negocio")
+        return render_template("ticket_print_cliente.html",
+                               venta=venta,
+                               detalles=detalles,
+                               siguiente_url=siguiente_url)
+
+    siguiente_url = url_for("ventas")
+    if request.args.get("siguiente") == "reporte":
+        fecha_reporte = request.args.get("fecha")
+        if fecha_reporte:
+            siguiente_url = url_for("reporte_diario", fecha=fecha_reporte)
+        else:
+            siguiente_url = url_for("reporte_diario")
+
+    return render_template("ticket_print_negocio.html",
                            venta=venta,
-                           detalles=detalles)
+                           detalles=detalles,
+                           siguiente_url=siguiente_url)
 
 # -------------------
 # REPORTE DE VENTAS DIARIO
@@ -1623,20 +1732,138 @@ def ticket_html(venta_id):
 def reporte_diario():
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    fecha_raw = request.args.get("fecha") or datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        fecha_reporte = datetime.strptime(fecha_raw, "%Y-%m-%d").date()
+    except ValueError:
+        fecha_reporte = datetime.now().date()
+        fecha_raw = fecha_reporte.strftime("%Y-%m-%d")
 
     cursor.execute("""
-        SELECT 
+        SELECT
             IFNULL(SUM(total),0) as total_dia,
             COUNT(*) as ventas
         FROM ventas
-        WHERE DATE(fecha)=CURDATE()
+        WHERE DATE(fecha)=%s
         AND estado='activa'
-    """)
+    """, (fecha_reporte,))
 
     data = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT metodo_pago,
+               IFNULL(SUM(total),0) as total,
+               COUNT(*) as ventas
+        FROM ventas
+        WHERE DATE(fecha)=%s
+        AND estado='activa'
+        GROUP BY metodo_pago
+        ORDER BY metodo_pago
+    """, (fecha_reporte,))
+    totales_pago = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT v.id,
+               v.fecha,
+               v.total,
+               v.metodo_pago,
+               c.nombre AS cliente,
+               m.nombre AS mascota
+        FROM ventas v
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN mascotas m ON v.mascota_id = m.id
+        WHERE DATE(v.fecha)=%s
+        AND v.estado='activa'
+        ORDER BY v.fecha DESC
+    """, (fecha_reporte,))
+    tickets = cursor.fetchall()
+
     cursor.close()
 
-    return render_template("reporte.html", data=data)
+    return render_template("reporte.html",
+                           data=data,
+                           totales_pago=totales_pago,
+                           tickets=tickets,
+                           fecha_reporte=fecha_raw)
+
+
+@app.route("/reporte_diario/descargar")
+@login_required
+@rol_requerido(["admin"])
+def descargar_reporte_diario():
+    fecha_raw = request.args.get("fecha") or datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        fecha_reporte = datetime.strptime(fecha_raw, "%Y-%m-%d").date()
+    except ValueError:
+        fecha_reporte = datetime.now().date()
+        fecha_raw = fecha_reporte.strftime("%Y-%m-%d")
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("""
+        SELECT v.id,
+               v.fecha,
+               v.total,
+               v.metodo_pago,
+               c.nombre AS cliente,
+               m.nombre AS mascota
+        FROM ventas v
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        LEFT JOIN mascotas m ON v.mascota_id = m.id
+        WHERE DATE(v.fecha)=%s
+        AND v.estado='activa'
+        ORDER BY v.fecha ASC
+    """, (fecha_reporte,))
+    tickets = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT metodo_pago,
+               IFNULL(SUM(total),0) as total,
+               COUNT(*) as ventas
+        FROM ventas
+        WHERE DATE(fecha)=%s
+        AND estado='activa'
+        GROUP BY metodo_pago
+        ORDER BY metodo_pago
+    """, (fecha_reporte,))
+    totales_pago = cursor.fetchall()
+    cursor.close()
+
+    salida = io.StringIO()
+    writer = csv.writer(salida)
+    writer.writerow(["Reporte diario", fecha_raw])
+    writer.writerow([])
+    writer.writerow(["Ticket", "Fecha", "Cliente", "Mascota", "Metodo de pago", "Total"])
+
+    for ticket in tickets:
+        writer.writerow([
+            ticket["id"],
+            ticket["fecha"],
+            ticket.get("cliente") or "",
+            ticket.get("mascota") or "",
+            ticket.get("metodo_pago") or "",
+            f"{float(ticket['total'] or 0):.2f}",
+        ])
+
+    writer.writerow([])
+    writer.writerow(["Metodo de pago", "Ventas", "Total"])
+
+    for total in totales_pago:
+        writer.writerow([
+            total.get("metodo_pago") or "Sin especificar",
+            total["ventas"],
+            f"{float(total['total'] or 0):.2f}",
+        ])
+
+    memoria = io.BytesIO()
+    memoria.write(salida.getvalue().encode("utf-8-sig"))
+    memoria.seek(0)
+
+    return send_file(memoria,
+                     as_attachment=True,
+                     download_name=f"reporte_diario_{fecha_raw}.csv",
+                     mimetype="text/csv")
 
 
 # -------------------

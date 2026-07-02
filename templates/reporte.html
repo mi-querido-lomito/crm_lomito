@@ -3,11 +3,96 @@
 
 <h2>Reporte Diario</h2>
 
+<form method="GET" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Fecha del reporte</label>
+        <input type="date"
+               name="fecha"
+               value="{{ fecha_reporte }}"
+               class="form-control">
+    </div>
+    <div class="col-md-8 d-flex gap-2">
+        <button class="btn btn-primary">Ver reporte</button>
+        <a class="btn btn-outline-success"
+           href="{{ url_for('descargar_reporte_diario', fecha=fecha_reporte) }}">
+            Descargar CSV
+        </a>
+    </div>
+</form>
+
 {% if data %}
-<p>Total ventas hoy: {{ data.ventas }}</p>
-<p>Total generado: ${{ data.total_dia }}</p>
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="border rounded p-3">
+            <strong>Tickets generados:</strong> {{ data.ventas }}<br>
+            <strong>Total generado:</strong> ${{ "%.2f"|format(data.total_dia) }}
+        </div>
+    </div>
+</div>
+
+<h4>Totales por método de pago</h4>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Método</th>
+            <th>Ventas</th>
+            <th>Total</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for total in totales_pago %}
+        <tr>
+            <td>{{ total.metodo_pago or "Sin especificar" }}</td>
+            <td>{{ total.ventas }}</td>
+            <td>${{ "%.2f"|format(total.total) }}</td>
+        </tr>
+    {% else %}
+        <tr>
+            <td colspan="3" class="text-center text-muted">No hay ventas activas en esta fecha.</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h4>Tickets del día</h4>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Ticket</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Mascota</th>
+            <th>Método de pago</th>
+            <th>Total</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for ticket in tickets %}
+        <tr>
+            <td>#{{ ticket.id }}</td>
+            <td>{{ ticket.fecha }}</td>
+            <td>{{ ticket.cliente or "" }}</td>
+            <td>{{ ticket.mascota or "" }}</td>
+            <td>{{ ticket.metodo_pago or "" }}</td>
+            <td>${{ "%.2f"|format(ticket.total) }}</td>
+            <td>
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{{ url_for('ticket_html_copia', venta_id=ticket.id, copia='negocio', siguiente='reporte', fecha=fecha_reporte) }}"
+                   target="_blank">
+                    Ticket negocio
+                </a>
+            </td>
+        </tr>
+    {% else %}
+        <tr>
+            <td colspan="7" class="text-center text-muted">No hay tickets generados en esta fecha.</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
 {% else %}
-<p>No hay ventas hoy.</p>
+<p>No hay ventas en esta fecha.</p>
 {% endif %}
 
 {% endblock %}
