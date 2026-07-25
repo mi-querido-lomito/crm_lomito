@@ -1,9 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CRM 
+    <title>CRM
       Mi Querido Lomito</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#212529">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Mi Querido Lomito">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
 
     <!-- Bootstrap CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -14,6 +22,13 @@
 
         .table-search-status {
             min-height: 1.5rem;
+        }
+
+        @media (max-width: 991.98px) {
+            #navbarMenu .btn {
+                width: 100%;
+                text-align: left;
+            }
         }
     </style>
 </head>
@@ -27,92 +42,100 @@
             🐾 CRM Mi Querido Lomito
         </a>
 
-        <div class="d-flex flex-wrap gap-2">
+        <button class="navbar-toggler" type="button"
+                data-bs-toggle="collapse" data-bs-target="#navbarMenu"
+                aria-controls="navbarMenu" aria-expanded="false" aria-label="Abrir menú">
+            <span class="navbar-toggler-icon"></span>
+        </button>
 
-            <a class="btn btn-sm btn-outline-light"
-               href="{{ url_for('clientes') }}">
-               Clientes
-            </a>
+        <div class="collapse navbar-collapse" id="navbarMenu">
+            <div class="d-flex flex-column flex-lg-row flex-lg-wrap gap-2 mt-3 mt-lg-0 ms-lg-auto pb-2 pb-lg-0">
 
-            <a class="btn btn-sm btn-outline-light"
-               href="{{ url_for('mascotas') }}">
-               Mascotas
-            </a>
+                <a class="btn btn-sm btn-outline-light"
+                   href="{{ url_for('clientes') }}">
+                   Clientes
+                </a>
 
-            <a class="btn btn-sm btn-outline-light"
-               href="{{ url_for('citas') }}">
-               Citas
-            </a>
+                <a class="btn btn-sm btn-outline-light"
+                   href="{{ url_for('mascotas') }}">
+                   Mascotas
+                </a>
 
-            {% if session["rol"] == "admin" %}
-            <a class="btn btn-sm btn-outline-light"
-               href="{{ url_for('productos') }}">
-               Productos
-            </a>
+                <a class="btn btn-sm btn-outline-light"
+                   href="{{ url_for('citas') }}">
+                   Citas
+                </a>
 
-            <a class="btn btn-sm btn-outline-light"
-               href="{{ url_for('servicios') }}">
-               Servicios
-            </a>
-            {% endif %}
+                {% if session["rol"] == "admin" %}
+                <a class="btn btn-sm btn-outline-light"
+                   href="{{ url_for('productos') }}">
+                   Productos
+                </a>
 
-            <!-- POS -->
-            <a class="btn btn-sm btn-primary"
-               href="{{ url_for('ventas') }}">
-               🛒 POS
-            </a>
+                <a class="btn btn-sm btn-outline-light"
+                   href="{{ url_for('servicios') }}">
+                   Servicios
+                </a>
+                {% endif %}
 
-            <!-- Historial -->
-            <a class="btn btn-sm btn-outline-info"
-               href="{{ url_for('ventas_lista') }}">
-               📄 Historial
-            </a>
+                <!-- POS -->
+                <a class="btn btn-sm btn-primary"
+                   href="{{ url_for('ventas') }}">
+                   🛒 POS
+                </a>
 
-            {% if session["rol"] == "admin" %}
-            <!-- Reporte -->
-            <a class="btn btn-sm btn-outline-secondary"
-               href="{{ url_for('reporte_diario') }}">
-               📊 Reporte
-            </a>
-            {% endif %}
+                <!-- Historial -->
+                <a class="btn btn-sm btn-outline-info"
+                   href="{{ url_for('ventas_lista') }}">
+                   📄 Historial
+                </a>
 
-            {% if session["rol"] == "admin" %}
-            <a class="btn btn-sm btn-outline-light"
-              href="{{ url_for('insumos') }}">
-                Insumos
-            </a>
+                {% if session["rol"] == "admin" %}
+                <!-- Reporte -->
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{{ url_for('reporte_diario') }}">
+                   📊 Reporte
+                </a>
+                {% endif %}
 
-            <a class="btn btn-sm btn-outline-light"
-              href="{{ url_for('proveedores') }}">
-                Proveedores
-            </a>
+                {% if session["rol"] == "admin" %}
+                <a class="btn btn-sm btn-outline-light"
+                  href="{{ url_for('insumos') }}">
+                    Insumos
+                </a>
 
-            <a class="btn btn-sm btn-outline-danger"
-              href="{{ url_for('gastos') }}">
-              Gastos del local
-            </a>
-            
-            <a class="btn btn-sm btn-outline-warning"
-               href="{{ url_for('entrada_inventario') }}">
-               📦 Entrada
-            </a>
-            {% endif %}
+                <a class="btn btn-sm btn-outline-light"
+                  href="{{ url_for('proveedores') }}">
+                    Proveedores
+                </a>
 
-            <a class="btn btn-sm btn-outline-success"
-               href="{{ url_for('abrir_caja') }}">
-               💰 Abrir Caja
-            </a>
+                <a class="btn btn-sm btn-outline-danger"
+                  href="{{ url_for('gastos') }}">
+                  Gastos del local
+                </a>
 
-            <a class="btn btn-sm btn-outline-danger"
-               href="{{ url_for('cerrar_caja') }}">
-               🔒 Cerrar Caja
-            </a>
+                <a class="btn btn-sm btn-outline-warning"
+                   href="{{ url_for('entrada_inventario') }}">
+                   📦 Entrada
+                </a>
+                {% endif %}
 
-            <a class="btn btn-sm btn-danger"
-               href="{{ url_for('logout') }}">
-               Salir
-            </a>
+                <a class="btn btn-sm btn-outline-success"
+                   href="{{ url_for('abrir_caja') }}">
+                   💰 Abrir Caja
+                </a>
 
+                <a class="btn btn-sm btn-outline-danger"
+                   href="{{ url_for('cerrar_caja') }}">
+                   🔒 Cerrar Caja
+                </a>
+
+                <a class="btn btn-sm btn-danger"
+                   href="{{ url_for('logout') }}">
+                   Salir
+                </a>
+
+            </div>
         </div>
     </div>
 </nav>
@@ -259,6 +282,24 @@ document.addEventListener("DOMContentLoaded", function() {
         });
 
         applyFilter();
+    });
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var navbarMenu = document.getElementById("navbarMenu");
+    if (!navbarMenu) {
+        return;
+    }
+
+    navbarMenu.querySelectorAll("a.btn").forEach(function(link) {
+        link.addEventListener("click", function() {
+            if (navbarMenu.classList.contains("show") && window.bootstrap) {
+                window.bootstrap.Collapse.getOrCreateInstance(navbarMenu).hide();
+            }
+        });
     });
 });
 </script>

@@ -11,3 +11,20 @@ Ejecutar hash usuarios.txt
 static/img/Logo con redes sin fondo.png
 static/img/Logo con redes.jpg
 static/img/Logo sin fondo.png
+
+# Herramientas de build descargadas localmente (Node, JDK, Android SDK) - no versionar
+tools/
+
+# Builds de las apps de escritorio/movil (se generan localmente, no se versionan)
+desktop_app/build/
+desktop_app/dist/
+desktop_app/*.spec
+desktop_app/lomito_config.json
+mobile_app/node_modules/
+mobile_app/android/app/build/
+mobile_app/android/.gradle/
+mobile_app/android/build/
+mobile_app/android/local.properties
+mobile_app/ios/App/Pods/
+mobile_app/ios/App/build/
+mobile_app/.gradle/
