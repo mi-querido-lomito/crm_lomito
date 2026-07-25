@@ -59,6 +59,12 @@
                ✏ Editar
             </a>
 
+            <a href="{{ url_for('etiqueta_insumo', id=i.id) }}"
+               class="btn btn-sm btn-outline-dark"
+               target="_blank">
+               🏷️ Etiqueta
+            </a>
+
             <a href="{{ url_for('eliminar_insumo', id=i.id) }}"
                class="btn btn-sm btn-danger"
                onclick="return confirm('¿Eliminar este insumo?')">

@@ -61,6 +61,12 @@
                class="btn btn-sm btn-warning">
                ✏ Editar
             </a>
+
+            <a href="{{ url_for('etiqueta_producto', id=p.id) }}"
+               class="btn btn-sm btn-outline-dark"
+               target="_blank">
+               🏷️ Etiqueta
+            </a>
             {% endif %}
         </td>
     </tr>

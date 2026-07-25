@@ -1068,6 +1068,29 @@ def etiquetas_productos_carta():
         mimetype="application/pdf"
     )
 
+# ETIQUETA DE UN SOLO PRODUCTO (IMPRESORA TERMICA)
+# -------------------
+@app.route("/etiqueta_producto/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def etiqueta_producto(id):
+
+    codigo = asegurar_codigo_barra_actual("productos", id)
+
+    if not codigo:
+        flash("Producto no encontrado")
+        return redirect(url_for("productos"))
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT nombre, precio, codigo_barras FROM productos WHERE id=%s", (id,))
+    producto = cursor.fetchone()
+    cursor.close()
+
+    return render_template("etiqueta_item_print.html",
+                           nombre=producto["nombre"],
+                           precio=producto["precio"],
+                           codigo_barras=producto["codigo_barras"])
+
 # -------------------
 # CITAS
 # -------------------
@@ -2664,6 +2687,28 @@ def etiquetas_insumos_carta():
                      download_name="etiquetas_insumos_carta.pdf",
                      mimetype="application/pdf")
 
+# ETIQUETA DE UN SOLO INSUMO (IMPRESORA TERMICA)
+# -------------------
+@app.route("/etiqueta_insumo/<int:id>")
+@login_required
+@rol_requerido(["admin"])
+def etiqueta_insumo(id):
+
+    codigo = asegurar_codigo_barra_actual("insumos", id)
+
+    if not codigo:
+        flash("Insumo no encontrado")
+        return redirect(url_for("insumos"))
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT nombre, costo, codigo_barras FROM insumos WHERE id=%s", (id,))
+    insumo = cursor.fetchone()
+    cursor.close()
+
+    return render_template("etiqueta_item_print.html",
+                           nombre=insumo["nombre"],
+                           precio=insumo["costo"],
+                           codigo_barras=insumo["codigo_barras"])
 
 # -------------------
 # PROVEEDORES

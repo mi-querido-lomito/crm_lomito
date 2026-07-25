@@ -21,41 +21,54 @@
 </form>
 
 {% if data %}
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="border rounded p-3">
-            <strong>Tickets generados:</strong> {{ data.ventas }}<br>
+<div class="border rounded p-3 mb-4">
+    <div class="row mb-3">
+        <div class="col-sm-6">
+            <strong>Tickets generados:</strong> {{ data.ventas }}
+        </div>
+        <div class="col-sm-6">
             <strong>Total generado:</strong> ${{ "%.2f"|format(data.total_dia) }}
         </div>
     </div>
+
+    <h5 class="mb-2">Totales por método de pago</h5>
+    <table class="table table-bordered table-striped mb-0" data-search="false">
+        <thead class="table-dark">
+            <tr>
+                <th>Método</th>
+                <th>Ventas</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for total in totales_pago %}
+            <tr>
+                <td>{{ total.metodo_pago or "Sin especificar" }}</td>
+                <td>{{ total.ventas }}</td>
+                <td>${{ "%.2f"|format(total.total) }}</td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="3" class="text-center text-muted">No hay ventas activas en esta fecha.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </div>
 
-<h4 class="mt-4 mb-3">Totales por método de pago</h4>
-<table class="table table-bordered table-striped" data-search="false">
-    <thead class="table-dark">
-        <tr>
-            <th>Método</th>
-            <th>Ventas</th>
-            <th>Total</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for total in totales_pago %}
-        <tr>
-            <td>{{ total.metodo_pago or "Sin especificar" }}</td>
-            <td>{{ total.ventas }}</td>
-            <td>${{ "%.2f"|format(total.total) }}</td>
-        </tr>
-    {% else %}
-        <tr>
-            <td colspan="3" class="text-center text-muted">No hay ventas activas en esta fecha.</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<div class="input-group mb-2">
+    <span class="input-group-text">Buscar</span>
+    <input type="search"
+           id="ticketsSearch"
+           class="form-control"
+           autocomplete="off"
+           placeholder="Buscar por ticket, cliente, mascota o método de pago">
+    <button type="button" id="ticketsSearchClear" class="btn btn-outline-secondary">Limpiar</button>
+</div>
+<div id="ticketsSearchStatus" class="form-text mb-2"></div>
 
-<h4 class="mt-5 mb-3">Tickets del día</h4>
-<table class="table table-bordered table-striped" data-search="false">
+<h4 class="mb-3">Tickets del día</h4>
+<table class="table table-bordered table-striped" data-search="false" id="ticketsTable">
     <thead class="table-dark">
         <tr>
             <th>Ticket</th>
@@ -91,6 +104,79 @@
     {% endfor %}
     </tbody>
 </table>
+
+<script>
+(function() {
+    const searchInput = document.getElementById("ticketsSearch");
+    const clearButton = document.getElementById("ticketsSearchClear");
+    const status = document.getElementById("ticketsSearchStatus");
+    const table = document.getElementById("ticketsTable");
+
+    if (!searchInput || !table) {
+        return;
+    }
+
+    function normalize(value) {
+        return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+
+    const rows = Array.from(table.querySelectorAll("tbody tr")).filter(function(row) {
+        return row.querySelectorAll("td").length > 1;
+    });
+
+    const searchableRows = rows.map(function(row) {
+        return { element: row, text: normalize(row.textContent) };
+    });
+
+    const noResultsRow = document.createElement("tr");
+    const noResultsCell = document.createElement("td");
+    noResultsCell.colSpan = table.querySelectorAll("thead th").length || 7;
+    noResultsCell.className = "text-center text-muted py-3";
+    noResultsCell.textContent = "No se encontraron tickets con ese criterio.";
+    noResultsRow.className = "d-none";
+    noResultsRow.appendChild(noResultsCell);
+    table.querySelector("tbody").appendChild(noResultsRow);
+
+    function updateStatus(visibleCount) {
+        if (searchInput.value.trim() === "") {
+            status.textContent = rows.length + " tickets en esta fecha.";
+            return;
+        }
+        status.textContent = visibleCount + " de " + rows.length + " tickets encontrados.";
+    }
+
+    function applyFilter() {
+        const query = normalize(searchInput.value.trim());
+        let visibleCount = 0;
+
+        searchableRows.forEach(function(row) {
+            const match = query === "" || row.text.includes(query);
+            row.element.classList.toggle("d-none", !match);
+
+            if (match) {
+                visibleCount += 1;
+            }
+        });
+
+        noResultsRow.classList.toggle("d-none", !(rows.length > 0 && query !== "" && visibleCount === 0));
+        updateStatus(visibleCount);
+    }
+
+    let filterTimer = null;
+    searchInput.addEventListener("input", function() {
+        window.clearTimeout(filterTimer);
+        filterTimer = window.setTimeout(applyFilter, 120);
+    });
+
+    clearButton.addEventListener("click", function() {
+        searchInput.value = "";
+        applyFilter();
+        searchInput.focus();
+    });
+
+    applyFilter();
+})();
+</script>
 {% else %}
 <p>No hay ventas en esta fecha.</p>
 {% endif %}

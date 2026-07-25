@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Etiqueta - {{ nombre }}</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<style>
+@page {
+    size: 60mm 40mm;
+    margin: 2mm;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 56mm;
+    margin: 0 auto;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    color: #000;
+}
+
+.nombre {
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1.2;
+    margin: 1mm 0;
+    overflow-wrap: anywhere;
+}
+
+.precio {
+    font-size: 11px;
+    margin: 1mm 0;
+}
+
+#barcode {
+    width: 100%;
+    max-height: 18mm;
+}
+
+.codigo {
+    font-size: 9px;
+    margin-top: 0.5mm;
+}
+
+.screen-actions {
+    margin: 12px 0;
+}
+
+.screen-actions button {
+    display: inline-block;
+    border: 1px solid #222;
+    border-radius: 4px;
+    color: #111;
+    background: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+@media print {
+    .screen-actions {
+        display: none;
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="screen-actions">
+    <button type="button" onclick="window.print()">Imprimir etiqueta</button>
+</div>
+
+<div class="nombre">{{ nombre }}</div>
+<div class="precio">${{ "%.2f"|format(precio or 0) }}</div>
+
+{% if codigo_barras %}
+<svg id="barcode"></svg>
+<div class="codigo">{{ codigo_barras }}</div>
+{% endif %}
+
+<script>
+{% if codigo_barras %}
+JsBarcode("#barcode", {{ codigo_barras|tojson }}, {
+    format: "CODE128",
+    displayValue: false,
+    height: 45,
+    margin: 0
+});
+{% endif %}
+
+window.addEventListener("load", function() {
+    window.setTimeout(function() {
+        window.print();
+    }, 300);
+});
+</script>
+
+</body>
+</html>
