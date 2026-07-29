@@ -19,6 +19,23 @@ de tu backend ya desplegado:
 
 Despues de cambiarla, sincroniza los proyectos nativos:
 
+## Icono de la app (Android/iOS)
+
+El icono real (logo de Mi Querido Lomito) ya esta generado a partir de
+`static/img/icon-512.png` en `resources/icon.png` y aplicado a Android
+(`android/app/src/main/res/mipmap-*`) e iOS
+(`ios/App/App/Assets.xcassets/AppIcon.appiconset`). Si cambias el logo,
+regenera todo con:
+
+```
+cp ../static/img/icon-512.png resources/icon.png
+npx @capacitor/assets generate --android --ios --iconBackgroundColor "#212529" --iconBackgroundColorDark "#212529"
+npx cap sync
+```
+
+(el color de fondo rellena el "safe zone" del icono adaptativo de Android
+alrededor del logo; ajustalo si tu logo tiene otro fondo).
+
 ```
 npx cap sync
 ```

@@ -149,6 +149,16 @@ def asegurar_columna(cursor, tabla, columna, definicion):
         cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
 
 
+def indice_existe(cursor, tabla, indice):
+    cursor.execute(f"SHOW INDEX FROM {tabla} WHERE Key_name=%s", (indice,))
+    return cursor.fetchone() is not None
+
+
+def asegurar_indice(cursor, tabla, indice, columnas):
+    if not indice_existe(cursor, tabla, indice):
+        cursor.execute(f"ALTER TABLE {tabla} ADD INDEX {indice} ({columnas})")
+
+
 def asegurar_tabla_proveedores(cursor):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS proveedores (
@@ -202,6 +212,17 @@ def asegurar_schema_crm():
         for columna, definicion in definiciones.items():
             asegurar_columna(cursor, tabla, columna, definicion)
 
+    # Los codigos de barras se buscan por igualdad en cada venta/entrada
+    # de inventario; sin indice, cada escaneo hace un table scan completo.
+    indices = {
+        "productos": "idx_productos_codigo_barras",
+        "servicios": "idx_servicios_codigo_barras",
+        "insumos": "idx_insumos_codigo_barras",
+    }
+
+    for tabla, nombre_indice in indices.items():
+        asegurar_indice(cursor, tabla, nombre_indice, "codigo_barras")
+
     mysql.connection.commit()
     cursor.close()
 
@@ -226,11 +247,33 @@ def estimar_tiempo_mascota(cursor, mascota_id):
     return 60
 
 
+def promedios_tiempo_mascotas(cursor, mascota_ids):
+    ids = list({mid for mid in mascota_ids if mid})
+    if not ids:
+        return {}
+
+    placeholders = ", ".join(["%s"] * len(ids))
+    cursor.execute(f"""
+        SELECT mascota_id, AVG(tiempo_servicio_min) AS promedio
+        FROM citas
+        WHERE mascota_id IN ({placeholders})
+        AND estado='Completada'
+        AND tiempo_servicio_min IS NOT NULL
+        AND tiempo_servicio_min > 0
+        GROUP BY mascota_id
+    """, tuple(ids))
+
+    return {
+        row["mascota_id"]: int(round(float(row["promedio"])))
+        for row in cursor.fetchall()
+        if row.get("promedio")
+    }
+
+
 def resumen_agenda_dia(cursor, fecha, mascota_id=None):
     inicio = datetime.combine(fecha.date(), time(10, 0))
     fin = datetime.combine(fecha.date(), time(17, 0))
     jornada_min = int((fin - inicio).total_seconds() / 60)
-    nuevo_min = estimar_tiempo_mascota(cursor, mascota_id)
 
     cursor.execute("""
         SELECT mascota_id
@@ -240,7 +283,13 @@ def resumen_agenda_dia(cursor, fecha, mascota_id=None):
     """, (fecha,))
     citas_dia = cursor.fetchall()
 
-    ocupado = sum(estimar_tiempo_mascota(cursor, cita.get("mascota_id")) for cita in citas_dia)
+    ids_a_consultar = [cita.get("mascota_id") for cita in citas_dia]
+    if mascota_id:
+        ids_a_consultar.append(mascota_id)
+
+    promedios = promedios_tiempo_mascotas(cursor, ids_a_consultar)
+    nuevo_min = promedios.get(mascota_id, 60) if mascota_id else 60
+    ocupado = sum(promedios.get(cita.get("mascota_id"), 60) for cita in citas_dia)
 
     return {
         "inicio": inicio,
@@ -306,6 +355,11 @@ def verificar_caja_diaria():
     if not current_user.is_authenticated:
         return
 
+    hoy = datetime.now().date().isoformat()
+
+    if session.get("caja_verificada") == hoy:
+        return
+
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cerrar_cajas_vencidas(cursor)
     mysql.connection.commit()
@@ -320,11 +374,18 @@ def verificar_caja_diaria():
     caja_hoy = cursor.fetchone()
     cursor.close()
 
-    if caja_hoy or request.endpoint == "abrir_caja":
+    if caja_hoy:
+        session["caja_verificada"] = hoy
+        return
+
+    if request.endpoint == "abrir_caja":
         return
 
     if datetime.now().time() >= time(9, 30):
         return redirect(url_for("abrir_caja", requerida=1))
+
+    # No se cachea aqui: antes de las 9:30 el estado puede cambiar a
+    # "requiere caja" en la siguiente peticion sin que el usuario refresque.
 
 # -------------------
 # USER MODEL
@@ -401,20 +462,21 @@ def dashboard():
     # ==========================
     if rol == "admin":
 
-        cursor.execute("SELECT COUNT(*) as total FROM clientes")
-        clientes = cursor.fetchone()["total"]
-
-        cursor.execute("SELECT COUNT(*) as total FROM mascotas")
-        mascotas = cursor.fetchone()["total"]
-
-        # Ventas hoy
+        # Conteos y venta de hoy en una sola consulta (evita 4 viajes
+        # redondos separados a la base de datos remota)
         cursor.execute("""
-            SELECT IFNULL(SUM(total),0) as total_hoy
-            FROM ventas
-            WHERE DATE(fecha)=CURDATE()
-            AND estado='activa'
+            SELECT
+                (SELECT COUNT(*) FROM clientes) AS clientes,
+                (SELECT COUNT(*) FROM mascotas) AS mascotas,
+                (SELECT COUNT(*) FROM productos) AS productos,
+                (SELECT IFNULL(SUM(total),0) FROM ventas
+                    WHERE DATE(fecha)=CURDATE() AND estado='activa') AS total_hoy
         """)
-        total_hoy = cursor.fetchone()["total_hoy"]
+        resumen_admin = cursor.fetchone()
+        clientes = resumen_admin["clientes"]
+        mascotas = resumen_admin["mascotas"]
+        productos = resumen_admin["productos"]
+        total_hoy = resumen_admin["total_hoy"]
 
         # Ventas últimos 7 días
         cursor.execute("""
@@ -427,22 +489,22 @@ def dashboard():
         """)
         ventas_7_dias = cursor.fetchall()
 
+        # Inventario bajo
+        cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 2")
+        bajo_stock = cursor.fetchall()
+
     else:
         # Empleado no necesita estas métricas
         clientes = None
         mascotas = None
+        productos = None
         total_hoy = None
         ventas_7_dias = []
+        bajo_stock = []
 
     # ==========================
     # MÉTRICAS GENERALES (TODOS)
     # ==========================
-
-    if rol == "admin":
-        cursor.execute("SELECT COUNT(*) as total FROM productos")
-        productos = cursor.fetchone()["total"]
-    else:
-        productos = None
 
     # Citas de hoy
     cursor.execute("""
@@ -452,13 +514,6 @@ def dashboard():
         GROUP BY estado
     """)
     resumen_citas = cursor.fetchall()
-
-    # Inventario bajo
-    if rol == "admin":
-        cursor.execute("SELECT nombre, stock FROM productos WHERE stock <= 2")
-        bajo_stock = cursor.fetchall()
-    else:
-        bajo_stock = []
 
     # Estado de caja
     cursor.execute("""
@@ -2153,6 +2208,7 @@ def cerrar_caja():
             """, (monto_final, diferencia, caja["id"]))
 
             mysql.connection.commit()
+            session.pop("caja_verificada", None)
 
             if session.get("rol") == "admin":
                 flash(f"Caja cerrada correctamente. Diferencia: ${diferencia}")

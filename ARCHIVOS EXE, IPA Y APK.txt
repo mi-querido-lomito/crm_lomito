@@ -1,0 +1,6 @@
+EXE
+E:\APIS PYTHON\CRM_Lomito_CLONE REPO\crm_lomito\desktop_app\dist\MiQueridoLomitoCRM_Setup.exe
+
+
+APK
+E:\APIS PYTHON\CRM_Lomito_CLONE REPO\crm_lomito\mobile_app\android\app\build\outputs\apk\debug\app-debug.apk

@@ -11,7 +11,32 @@ pip install -r requirements-desktop.txt
 pyinstaller --onefile --windowed --name "MiQueridoLomitoCRM" --icon icon.ico main.py
 ```
 
-El ejecutable queda en `dist/MiQueridoLomitoCRM.exe`.
+El ejecutable queda en `dist/MiQueridoLomitoCRM.exe`. El icono (`icon.ico`)
+esta generado a partir de `static/img/icon-512.png`; si cambias el logo,
+regenera el .ico con Pillow:
+
+```
+python -c "from PIL import Image; Image.open('../static/img/icon-512.png').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+```
+
+## Compilar el instalador (NSIS)
+
+El .exe de arriba es portable (no se "instala"). Para generar un instalador
+real con accesos directos, icono y desinstalador desde "Agregar o quitar
+programas", usa NSIS (https://nsis.sourceforge.io/):
+
+```
+makensis installer.nsi
+```
+
+Genera `dist/MiQueridoLomitoCRM_Setup.exe`. Requiere que ya exista
+`dist/MiQueridoLomitoCRM.exe` (compilalo primero con PyInstaller, ver
+arriba). El instalador:
+
+- No requiere permisos de administrador (instala en
+  `%LOCALAPPDATA%\MiQueridoLomitoCRM`, por usuario).
+- Crea accesos directos en el Menu Inicio y en el Escritorio.
+- Registra un desinstalador visible en "Agregar o quitar programas".
 
 ## Configurar la URL del servidor
 
@@ -22,7 +47,8 @@ junto al .exe con este contenido:
 { "url": "https://CAMBIA-ESTA-URL-POR-LA-DE-TU-SERVIDOR.com" }
 ```
 
-Edita ese archivo y coloca la URL real de tu backend desplegado, luego
+Si necesitas apuntar a otra URL, edita `main.py` (constante `DEFAULT_URL`)
+antes de compilar, o edita `lomito_config.json` despues de instalar y
 vuelve a abrir la app. También puedes fijarla con la variable de entorno
 `LOMITO_APP_URL` antes de lanzar el ejecutable.
 
