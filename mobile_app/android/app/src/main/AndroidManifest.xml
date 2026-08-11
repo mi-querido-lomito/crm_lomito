@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        cordova-android (incluido por Capacitor para compatibilidad de plugins)
+        declara minSdkVersion 22 en su propio manifest. Esta app no usa plugins
+        Cordova propios, solo el bridge base de Capacitor, por lo que se fuerza
+        la version minima a 21 (Android 5.0) para poder instalar en tablets
+        antiguas como la Samsung Galaxy Tab A SM-P350. Probar en el dispositivo
+        real: si Capacitor llega a invocar una API exclusiva de API 22+ en este
+        equipo, la app fallaria en tiempo de ejecucion (no en la compilacion).
+    -->
+    <uses-sdk tools:overrideLibrary="org.apache.cordova" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

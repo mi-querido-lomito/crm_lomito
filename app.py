@@ -14,7 +14,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import check_password_hash
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.platypus import Table
+import base64
 import io
+import json
+import os
+import uuid
 from flask import send_file
 from flask import session
 import csv
@@ -23,6 +27,7 @@ import MySQLdb.cursors
 from functools import wraps
 from flask import abort
 from datetime import datetime, time, timedelta
+from werkzeug.utils import secure_filename
 
 def actualizar_citas_perdidas():
     cursor = mysql.connection.cursor()
@@ -69,6 +74,206 @@ BARCODE_ENTITIES = {
     "servicios": "SERV",
     "insumos": "INS",
 }
+
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+MASCOTA_FOTO_FORMATOS = {
+    "JPEG": ("jpg", "image/jpeg"),
+    "PNG": ("png", "image/png"),
+    "GIF": ("gif", "image/gif"),
+    "WEBP": ("webp", "image/webp"),
+}
+
+
+@app.errorhandler(413)
+def archivo_demasiado_grande(error):
+    flash("La imagen supera el tamaño máximo permitido")
+    return redirect(url_for("mascotas"))
+
+
+def obtener_google_drive_folder_id():
+    folder_id = (app.config.get("GOOGLE_DRIVE_FOLDER_ID") or "").strip()
+    if not folder_id:
+        raise RuntimeError("Configura GOOGLE_DRIVE_FOLDER_ID con el ID de la carpeta de Drive")
+    return folder_id
+
+
+def cargar_google_drive_credentials():
+    try:
+        from google.oauth2 import service_account
+    except ImportError as exc:
+        raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
+
+    credenciales_b64 = (app.config.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_B64") or "").strip()
+    credenciales_json = (app.config.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON") or "").strip()
+    credenciales_file = (
+        app.config.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE")
+        or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        or ""
+    ).strip()
+
+    try:
+        if credenciales_b64:
+            credenciales_json = base64.b64decode(credenciales_b64).decode("utf-8")
+
+        if credenciales_json:
+            return service_account.Credentials.from_service_account_info(
+                json.loads(credenciales_json),
+                scopes=GOOGLE_DRIVE_SCOPES
+            )
+
+        if credenciales_file:
+            return service_account.Credentials.from_service_account_file(
+                credenciales_file,
+                scopes=GOOGLE_DRIVE_SCOPES
+            )
+    except Exception as exc:
+        raise RuntimeError("Las credenciales de Google Drive no se pudieron leer o no tienen un JSON válido") from exc
+
+    raise RuntimeError(
+        "Configura GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_B64, "
+        "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON o GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE"
+    )
+
+
+def crear_google_drive_service():
+    try:
+        from googleapiclient.discovery import build
+    except ImportError as exc:
+        raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
+
+    return build(
+        "drive",
+        "v3",
+        credentials=cargar_google_drive_credentials(),
+        cache_discovery=False
+    )
+
+
+def validar_foto_mascota(archivo):
+    if not archivo or not archivo.filename:
+        return None
+
+    contenido = archivo.read()
+    max_bytes = int(app.config.get("MASCOTAS_FOTO_MAX_BYTES") or (8 * 1024 * 1024))
+
+    if not contenido:
+        raise ValueError("La foto seleccionada está vacía")
+
+    if len(contenido) > max_bytes:
+        max_mb = max_bytes // (1024 * 1024)
+        raise ValueError(f"La foto no debe superar {max_mb} MB")
+
+    try:
+        from PIL import Image, UnidentifiedImageError
+
+        with Image.open(io.BytesIO(contenido)) as imagen:
+            formato = imagen.format
+            imagen.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError("La foto debe ser una imagen JPG, PNG, GIF o WebP") from exc
+
+    if formato not in MASCOTA_FOTO_FORMATOS:
+        raise ValueError("La foto debe ser una imagen JPG, PNG, GIF o WebP")
+
+    extension, mime_type = MASCOTA_FOTO_FORMATOS[formato]
+
+    return {
+        "contenido": contenido,
+        "extension": extension,
+        "mime_type": mime_type,
+    }
+
+
+def subir_foto_mascota_drive(archivo, mascota_id, nombre_mascota):
+    foto = validar_foto_mascota(archivo)
+    if not foto:
+        return None
+
+    try:
+        from googleapiclient.http import MediaIoBaseUpload
+    except ImportError as exc:
+        raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
+
+    service = crear_google_drive_service()
+    nombre_limpio = secure_filename(nombre_mascota or "mascota") or "mascota"
+    nombre_drive = f"mascota_{mascota_id}_{nombre_limpio}_{uuid.uuid4().hex}.{foto['extension']}"
+
+    media = MediaIoBaseUpload(
+        io.BytesIO(foto["contenido"]),
+        mimetype=foto["mime_type"],
+        resumable=True
+    )
+    metadata = {
+        "name": nombre_drive,
+        "parents": [obtener_google_drive_folder_id()],
+    }
+
+    try:
+        archivo_drive = service.files().create(
+            body=metadata,
+            media_body=media,
+            fields="id,name,mimeType,webViewLink",
+            supportsAllDrives=True
+        ).execute()
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo subir la foto a Google Drive: {exc}") from exc
+
+    if not archivo_drive.get("id"):
+        raise RuntimeError("Google Drive no devolvió el ID del archivo subido")
+
+    return {
+        "foto_drive_id": archivo_drive.get("id"),
+        "foto_drive_nombre": archivo_drive.get("name") or nombre_drive,
+        "foto_mime_type": archivo_drive.get("mimeType") or foto["mime_type"],
+        "foto_drive_web_view_url": archivo_drive.get("webViewLink"),
+    }
+
+
+def eliminar_foto_drive(file_id):
+    if not file_id:
+        return
+
+    try:
+        crear_google_drive_service().files().delete(
+            fileId=file_id,
+            supportsAllDrives=True
+        ).execute()
+    except Exception as exc:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status == 404:
+            return
+        raise RuntimeError(f"No se pudo eliminar la foto anterior de Google Drive: {exc}") from exc
+
+
+def eliminar_foto_drive_silencioso(file_id):
+    try:
+        eliminar_foto_drive(file_id)
+    except RuntimeError:
+        pass
+
+
+def descargar_foto_drive(file_id):
+    try:
+        from googleapiclient.http import MediaIoBaseDownload
+    except ImportError as exc:
+        raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
+
+    buffer = io.BytesIO()
+    try:
+        drive_request = crear_google_drive_service().files().get_media(
+            fileId=file_id,
+            supportsAllDrives=True
+        )
+        downloader = MediaIoBaseDownload(buffer, drive_request)
+        terminado = False
+
+        while not terminado:
+            _, terminado = downloader.next_chunk()
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo descargar la foto desde Google Drive: {exc}") from exc
+
+    buffer.seek(0)
+    return buffer
 
 
 def generar_codigo_barra(prefijo):
@@ -196,6 +401,11 @@ def asegurar_schema_crm():
             "talla": "VARCHAR(50) NULL",
             "color": "VARCHAR(80) NULL",
             "notas": "TEXT NULL",
+            "foto_drive_id": "VARCHAR(255) NULL",
+            "foto_drive_nombre": "VARCHAR(255) NULL",
+            "foto_mime_type": "VARCHAR(100) NULL",
+            "foto_drive_web_view_url": "TEXT NULL",
+            "foto_actualizada": "DATETIME NULL",
         },
         "citas": {
             "servicio_id": "INT NULL",
@@ -716,53 +926,80 @@ def mascotas():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     if request.method == "POST":
-        nombre = request.form["nombre"]
-        especie = request.form["especie"]
-        cliente_id = request.form.get("cliente_id")
-        nuevo_cliente = request.form.get("nuevo_cliente")
+        try:
+            nombre = request.form["nombre"]
+            especie = request.form["especie"]
+            cliente_id = request.form.get("cliente_id")
+            nuevo_cliente = request.form.get("nuevo_cliente")
 
-        if nuevo_cliente == "1":
-            cliente_nombre = request.form.get("cliente_nombre")
-            cliente_telefono = request.form.get("cliente_telefono")
-            cliente_direccion = request.form.get("cliente_direccion")
+            if nuevo_cliente == "1":
+                cliente_nombre = request.form.get("cliente_nombre")
+                cliente_telefono = request.form.get("cliente_telefono")
+                cliente_direccion = request.form.get("cliente_direccion")
 
-            if not cliente_nombre:
-                flash("El nombre del nuevo cliente es obligatorio")
+                if not cliente_nombre:
+                    flash("El nombre del nuevo cliente es obligatorio")
+                    cursor.close()
+                    return redirect(url_for("mascotas"))
+
+                cursor.execute("""
+                    INSERT INTO clientes (nombre, telefono, direccion)
+                    VALUES (%s, %s, %s)
+                """, (cliente_nombre, cliente_telefono, cliente_direccion))
+                cliente_id = cursor.lastrowid
+
+            if not cliente_id:
+                flash("Selecciona un dueño o registra un cliente nuevo")
                 cursor.close()
                 return redirect(url_for("mascotas"))
 
+            datos = (
+                nombre,
+                especie,
+                cliente_id,
+                request.form.get("raza"),
+                request.form.get("edad") or None,
+                request.form.get("fecha_especial") or None,
+                request.form.get("alergias"),
+                request.form.get("genero"),
+                request.form.get("talla"),
+                request.form.get("color"),
+                request.form.get("notas"),
+            )
+
             cursor.execute("""
-                INSERT INTO clientes (nombre, telefono, direccion)
-                VALUES (%s, %s, %s)
-            """, (cliente_nombre, cliente_telefono, cliente_direccion))
+                INSERT INTO mascotas
+                (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, datos)
+            mascota_id = cursor.lastrowid
+            foto_drive = subir_foto_mascota_drive(request.files.get("foto"), mascota_id, nombre)
+
+            if foto_drive:
+                cursor.execute("""
+                    UPDATE mascotas
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    foto_drive["foto_drive_id"],
+                    foto_drive["foto_drive_nombre"],
+                    foto_drive["foto_mime_type"],
+                    foto_drive["foto_drive_web_view_url"],
+                    mascota_id
+                ))
+
             mysql.connection.commit()
-            cliente_id = cursor.lastrowid
+            flash("Mascota registrada correctamente")
+        except (ValueError, RuntimeError) as error:
+            mysql.connection.rollback()
+            flash(str(error))
 
-        if not cliente_id:
-            flash("Selecciona un dueño o registra un cliente nuevo")
-            cursor.close()
-            return redirect(url_for("mascotas"))
-
-        datos = (
-            nombre,
-            especie,
-            cliente_id,
-            request.form.get("raza"),
-            request.form.get("edad") or None,
-            request.form.get("fecha_especial") or None,
-            request.form.get("alergias"),
-            request.form.get("genero"),
-            request.form.get("talla"),
-            request.form.get("color"),
-            request.form.get("notas"),
-        )
-
-        cursor.execute("""
-            INSERT INTO mascotas
-            (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, datos)
-        mysql.connection.commit()
+        cursor.close()
+        return redirect(url_for("mascotas"))
 
     cursor.execute("""
         SELECT mascotas.*, clientes.nombre as dueno
@@ -813,24 +1050,71 @@ def editar_mascota(id):
         talla = request.form.get("talla")
         color = request.form.get("color")
         notas = request.form.get("notas")
+        foto_archivo = request.files.get("foto")
+        reemplaza_foto = foto_archivo and foto_archivo.filename
+        quitar_foto = request.form.get("quitar_foto") == "1" and not reemplaza_foto
+        nueva_foto_drive = None
 
-        cursor.execute("""
-            UPDATE mascotas
-            SET nombre=%s,
-                especie=%s,
-                cliente_id=%s,
-                raza=%s,
-                edad=%s,
-                fecha_especial=%s,
-                alergias=%s,
-                genero=%s,
-                talla=%s,
-                color=%s,
-                notas=%s
-            WHERE id=%s
-        """, (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas, id))
+        try:
+            if reemplaza_foto:
+                nueva_foto_drive = subir_foto_mascota_drive(foto_archivo, id, nombre)
 
-        mysql.connection.commit()
+            cursor.execute("""
+                UPDATE mascotas
+                SET nombre=%s,
+                    especie=%s,
+                    cliente_id=%s,
+                    raza=%s,
+                    edad=%s,
+                    fecha_especial=%s,
+                    alergias=%s,
+                    genero=%s,
+                    talla=%s,
+                    color=%s,
+                    notas=%s
+                WHERE id=%s
+            """, (nombre, especie, cliente_id, raza, edad, fecha_especial, alergias, genero, talla, color, notas, id))
+
+            if nueva_foto_drive:
+                cursor.execute("""
+                    UPDATE mascotas
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    nueva_foto_drive["foto_drive_id"],
+                    nueva_foto_drive["foto_drive_nombre"],
+                    nueva_foto_drive["foto_mime_type"],
+                    nueva_foto_drive["foto_drive_web_view_url"],
+                    id
+                ))
+            elif quitar_foto:
+                cursor.execute("""
+                    UPDATE mascotas
+                    SET foto_drive_id=NULL,
+                        foto_drive_nombre=NULL,
+                        foto_mime_type=NULL,
+                        foto_drive_web_view_url=NULL,
+                        foto_actualizada=NULL
+                    WHERE id=%s
+                """, (id,))
+
+            mysql.connection.commit()
+        except (ValueError, RuntimeError) as error:
+            mysql.connection.rollback()
+            if nueva_foto_drive:
+                eliminar_foto_drive_silencioso(nueva_foto_drive["foto_drive_id"])
+            flash(str(error))
+            cursor.close()
+            return redirect(url_for("editar_mascota", id=id))
+
+        if nueva_foto_drive or quitar_foto:
+            eliminar_foto_drive_silencioso(mascota.get("foto_drive_id"))
+
+        cursor.close()
         flash("Mascota actualizada correctamente")
         return redirect(url_for("mascotas"))
 
@@ -839,6 +1123,35 @@ def editar_mascota(id):
                            mascota=mascota,
                            clientes=clientes)
 
+
+@app.route("/mascota/<int:id>/foto")
+@login_required
+def foto_mascota(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("""
+        SELECT foto_drive_id, foto_drive_nombre, foto_mime_type
+        FROM mascotas
+        WHERE id=%s
+    """, (id,))
+    mascota = cursor.fetchone()
+    cursor.close()
+
+    if not mascota or not mascota.get("foto_drive_id"):
+        abort(404)
+
+    try:
+        archivo = descargar_foto_drive(mascota["foto_drive_id"])
+    except RuntimeError:
+        abort(404)
+
+    return send_file(
+        archivo,
+        mimetype=mascota.get("foto_mime_type") or "image/jpeg",
+        download_name=mascota.get("foto_drive_nombre") or f"mascota-{id}.jpg",
+        max_age=3600
+    )
+
+
 # ELIMINAR MASCOTA
 # -------------------
 @app.route("/eliminar_mascota/<int:id>")
@@ -846,12 +1159,25 @@ def editar_mascota(id):
 @rol_requerido(["admin"])
 def eliminar_mascota(id):
 
-    cursor = mysql.connection.cursor()
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT foto_drive_id FROM mascotas WHERE id=%s", (id,))
+    mascota = cursor.fetchone()
+
     cursor.execute("DELETE FROM mascotas WHERE id=%s", (id,))
     mysql.connection.commit()
     cursor.close()
 
-    flash("Mascota eliminada correctamente")
+    foto_error = False
+    if mascota and mascota.get("foto_drive_id"):
+        try:
+            eliminar_foto_drive(mascota["foto_drive_id"])
+        except RuntimeError:
+            foto_error = True
+
+    if foto_error:
+        flash("Mascota eliminada, pero no se pudo borrar su foto de Drive")
+    else:
+        flash("Mascota eliminada correctamente")
     return redirect(url_for("mascotas"))
 
 
@@ -2903,4 +3229,4 @@ def gastos():
 
 # -------------------FINAL DE APP-------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

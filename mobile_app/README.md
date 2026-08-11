@@ -5,6 +5,26 @@ Este proyecto NO reescribe el CRM: envuelve tu app web ya desplegada
 El celular no corre Flask ni MySQL; solo muestra tu sitio dentro de una
 app con icono propio, sin la barra del navegador.
 
+## Compatibilidad con Android 5.0 (tablets antiguas)
+
+`minSdkVersion` esta en 21 (Android 5.0) en `android/variables.gradle` para
+poder instalar en equipos como la Samsung Galaxy Tab A SM-P350. Capacitor 6
+oficialmente solo soporta Android 5.1+ (API 22) porque el modulo
+`cordova-android` que trae para compatibilidad de plugins declara ese
+minimo en su manifest; por eso `android/app/src/main/AndroidManifest.xml`
+fuerza `tools:overrideLibrary="org.apache.cordova"` para permitir API 21.
+Esta app no usa plugins Cordova (solo el bridge base de Capacitor), asi que
+el riesgo es bajo, pero es una version por debajo de lo oficialmente
+probado por el equipo de Capacitor - **prueba siempre en el dispositivo
+real** despues de instalar.
+
+Si el WebView del equipo esta muy desactualizado (Android System WebView no
+se actualiza por version de Android, sino por Play Store), el sitio puede
+verse roto aunque la app instale bien. Prueba primero abriendo la URL del
+CRM en el navegador del propio dispositivo (Chrome, si esta disponible)
+antes de instalar el APK: si se ve y funciona bien ahi, funcionara igual
+dentro de la app.
+
 ## 1. Configurar la URL real antes de compilar
 
 Edita `capacitor.config.json` y reemplaza `server.url` por la URL pública

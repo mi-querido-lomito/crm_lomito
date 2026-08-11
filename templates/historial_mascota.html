@@ -3,6 +3,23 @@
 
 <h2>Historial de {{ mascota.nombre }}</h2>
 
+{% if mascota.foto_drive_id %}
+<div class="mb-3">
+    <img src="{{ url_for('foto_mascota', id=mascota.id, v=mascota.foto_actualizada) }}"
+         alt="Foto de {{ mascota.nombre }}"
+         loading="lazy"
+         style="width: 180px; height: 180px; object-fit: cover; border: 1px solid #dee2e6; border-radius: 6px;">
+    {% if mascota.foto_drive_web_view_url %}
+    <a href="{{ mascota.foto_drive_web_view_url }}"
+       class="btn btn-outline-secondary btn-sm ms-2"
+       target="_blank"
+       rel="noopener">
+        Abrir en Drive
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="row mb-4">
     <div class="col-md-6">
         <table class="table table-bordered" data-search="false">

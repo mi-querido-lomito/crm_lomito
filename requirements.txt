@@ -6,6 +6,8 @@ et_xmlfile==2.0.0
 Flask==3.1.1
 Flask-Login==0.6.3
 Flask-MySQLdb==2.0.0
+google-api-python-client==2.198.0
+google-auth==2.56.0
 gunicorn==23.0.0
 itsdangerous==2.2.0
 Jinja2==3.1.6

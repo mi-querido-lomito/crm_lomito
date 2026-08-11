@@ -3,7 +3,18 @@
 
 <h2>Mascotas</h2>
 
-<form method="POST" class="mb-4">
+<style>
+.mascota-foto-thumb {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #f8f9fa;
+}
+</style>
+
+<form method="POST" class="mb-4" enctype="multipart/form-data">
     <div class="row">
         <div class="col-md-4">
             <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
@@ -41,6 +52,12 @@
         </div>
         <div class="col-md-4">
             <input name="notas" placeholder="Observaciones generales" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input type="file"
+                   name="foto"
+                   accept="image/jpeg,image/png,image/gif,image/webp"
+                   class="form-control mb-2">
         </div>
     </div>
 
@@ -84,6 +101,7 @@
 <table class="table table-bordered">
     <tr>
         <th>ID</th>
+        <th>Foto</th>
         <th>Nombre</th>
         <th>Especie</th>
         <th>Raza</th>
@@ -97,6 +115,20 @@
     {% for m in mascotas %}
     <tr>
         <td>{{ m.id }}</td>
+        <td>
+            {% if m.foto_drive_id %}
+            <a href="{{ m.foto_drive_web_view_url or url_for('foto_mascota', id=m.id) }}"
+               target="_blank"
+               rel="noopener">
+                <img src="{{ url_for('foto_mascota', id=m.id, v=m.foto_actualizada) }}"
+                     alt="Foto de {{ m.nombre }}"
+                     loading="lazy"
+                     class="mascota-foto-thumb">
+            </a>
+            {% else %}
+            <span class="text-muted">Sin foto</span>
+            {% endif %}
+        </td>
         <td>{{ m.nombre }}</td>
         <td>{{ m.especie }}</td>
         <td>{{ m.raza or "" }}</td>
