@@ -98,6 +98,35 @@ def obtener_google_drive_folder_id():
 
 
 def cargar_google_drive_credentials():
+    oauth_refresh_token = (app.config.get("GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN") or "").strip()
+    oauth_client_id = (app.config.get("GOOGLE_DRIVE_OAUTH_CLIENT_ID") or "").strip()
+    oauth_client_secret = (app.config.get("GOOGLE_DRIVE_OAUTH_CLIENT_SECRET") or "").strip()
+    oauth_token_uri = (
+        app.config.get("GOOGLE_DRIVE_OAUTH_TOKEN_URI")
+        or "https://oauth2.googleapis.com/token"
+    ).strip()
+
+    if oauth_refresh_token:
+        if not oauth_client_id or not oauth_client_secret:
+            raise RuntimeError(
+                "Configura GOOGLE_DRIVE_OAUTH_CLIENT_ID y "
+                "GOOGLE_DRIVE_OAUTH_CLIENT_SECRET junto con GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN"
+            )
+
+        try:
+            from google.oauth2.credentials import Credentials
+        except ImportError as exc:
+            raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
+
+        return Credentials(
+            token=None,
+            refresh_token=oauth_refresh_token,
+            token_uri=oauth_token_uri,
+            client_id=oauth_client_id,
+            client_secret=oauth_client_secret,
+            scopes=GOOGLE_DRIVE_SCOPES
+        )
+
     try:
         from google.oauth2 import service_account
     except ImportError as exc:
@@ -3229,4 +3258,4 @@ def gastos():
 
 # -------------------FINAL DE APP-------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
