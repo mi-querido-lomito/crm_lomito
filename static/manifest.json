@@ -1,0 +1,25 @@
+{
+  "name": "CRM Mi Querido Lomito",
+  "short_name": "Lomito CRM",
+  "description": "Sistema de gestion de clientes, mascotas, citas, ventas e inventario para Mi Querido Lomito.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f9",
+  "theme_color": "#212529",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

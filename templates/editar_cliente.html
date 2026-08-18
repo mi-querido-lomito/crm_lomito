@@ -16,10 +16,10 @@
            value="{{ cliente.telefono }}"
            class="form-control mb-2">
 
-    <label>Email:</label>
-    <input name="email"
-           value="{{ cliente.email }}"
-           class="form-control mb-3">
+    <label>Dirección o casa:</label>
+    <textarea name="direccion"
+              class="form-control mb-3"
+              rows="3">{{ cliente.direccion or "" }}</textarea>
 
     <button class="btn btn-success w-100">
         Guardar Cambios

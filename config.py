@@ -1,10 +1,26 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 class Config:
-    SECRET_KEY = os.environ.get("SistemasRacks.23") 
-    MYSQL_HOST = os.environ.get("ns1.solucionesefectivas.com.mx")
-    MYSQL_PORT = os.environ.get("3306")
-    MYSQL_USER = os.environ.get("siste234_America9206")
-    MYSQL_PASSWORD = os.environ.get("Lomitos.2025!")
-    MYSQL_DB = os.environ.get("siste234_Mi_querido_lomito")
-    
+    MYSQL_HOST = os.getenv('DB_HOST')
+    MYSQL_PORT = int(os.getenv('DB_PORT', 3306))
+    MYSQL_USER = os.getenv('DB_USER')
+    MYSQL_PASSWORD = os.getenv('DB_PASSWORD')
+    MYSQL_DB = os.getenv('DB_NAME')
+    MYSQL_UNIX_SOCKET = None
+    MYSQL_CONNECT_TIMEOUT = 5
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+    GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "")
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_B64 = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_B64", "")
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE", "")
+    GOOGLE_DRIVE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_DRIVE_OAUTH_CLIENT_ID", "")
+    GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_OAUTH_CLIENT_SECRET", "")
+    GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN", "")
+    GOOGLE_DRIVE_OAUTH_TOKEN_URI = os.getenv("GOOGLE_DRIVE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
+    MASCOTAS_FOTO_MAX_BYTES = int(os.getenv("MASCOTAS_FOTO_MAX_BYTES", 8 * 1024 * 1024))
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 16 * 1024 * 1024))

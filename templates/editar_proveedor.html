@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Proveedor</h2>
+
+<form method="POST">
+    <label>Nombre:</label>
+    <input name="nombre"
+           value="{{ proveedor.nombre }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Dirección física o web donde se compra:</label>
+    <textarea name="direccion_contacto"
+              class="form-control mb-2">{{ proveedor.direccion_contacto or "" }}</textarea>
+
+    <label>Teléfono:</label>
+    <input name="telefono"
+           value="{{ proveedor.telefono or '' }}"
+           class="form-control mb-2">
+
+    <label>Datos de contacto adicionales u observaciones:</label>
+    <textarea name="observaciones"
+              class="form-control mb-3">{{ proveedor.observaciones or "" }}</textarea>
+
+    <button class="btn btn-success w-100">
+        Guardar Cambios
+    </button>
+</form>
+
+{% endblock %}

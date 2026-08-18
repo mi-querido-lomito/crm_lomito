@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Finalizar Cita</h2>
+
+<div class="alert alert-info">
+    <strong>Mascota:</strong> {{ cita.mascota }}<br>
+    {% if cita.cliente %}
+    <strong>Dueño:</strong> {{ cita.cliente }}<br>
+    {% endif %}
+    <strong>Servicio:</strong> {{ cita.servicio or "Sin servicio" }}<br>
+    <strong>Fecha:</strong> {{ cita.fecha }}
+</div>
+
+<form method="POST">
+    <label>Tiempo transcurrido del servicio en minutos:</label>
+    <input type="number"
+           name="tiempo_servicio_min"
+           min="1"
+           value="{{ cita.tiempo_servicio_min or '' }}"
+           class="form-control mb-2"
+           required>
+
+    <label>Observaciones:</label>
+    <textarea name="observaciones"
+              class="form-control mb-3"
+              rows="5"
+              placeholder="Observaciones del servicio realizado">{{ cita.observaciones or cita.notas or "" }}</textarea>
+
+    {% if citas_mismo_dueno %}
+    <div class="border rounded p-3 mb-3">
+        <h5 class="mb-2">Finalizar otras citas del mismo dueño hoy</h5>
+        <p class="form-text mb-2">
+            Se marcarán como completadas y, si tienen servicio asignado, se agregarán al carrito para cobrarlas juntas.
+            Cada mascota guarda su propio tiempo y observaciones en su historial.
+        </p>
+
+        {% for cita_relacionada in citas_mismo_dueno %}
+        <div class="border rounded p-2 mb-2">
+            <div class="form-check mb-2">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="citas_mismo_dueno"
+                       value="{{ cita_relacionada.id }}"
+                       id="citaRelacionada{{ cita_relacionada.id }}">
+                <label class="form-check-label" for="citaRelacionada{{ cita_relacionada.id }}">
+                    <strong>{{ cita_relacionada.mascota }}</strong> -
+                    {{ cita_relacionada.servicio or "Sin servicio" }} -
+                    {{ cita_relacionada.fecha }}
+                </label>
+            </div>
+
+            <label class="form-text mb-0">Tiempo transcurrido (min):</label>
+            <input type="number"
+                   name="tiempo_servicio_min_{{ cita_relacionada.id }}"
+                   min="1"
+                   class="form-control form-control-sm mb-2">
+
+            <label class="form-text mb-0">Observaciones de {{ cita_relacionada.mascota }}:</label>
+            <textarea name="observaciones_{{ cita_relacionada.id }}"
+                      class="form-control form-control-sm"
+                      rows="2"
+                      placeholder="Observaciones del servicio realizado a {{ cita_relacionada.mascota }}"></textarea>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <button class="btn btn-success w-100">
+        Guardar observaciones y pasar a cobrar
+    </button>
+</form>
+
+{% endblock %}

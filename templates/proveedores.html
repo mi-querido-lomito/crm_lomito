@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Proveedores</h2>
+
+<form method="POST" class="mb-4">
+    <input name="nombre"
+           placeholder="Nombre"
+           class="form-control mb-2"
+           required>
+
+    <textarea name="direccion_contacto"
+              placeholder="Dirección física o web donde se compra"
+              class="form-control mb-2"></textarea>
+
+    <input name="telefono"
+           placeholder="Teléfono"
+           class="form-control mb-2">
+
+    <textarea name="observaciones"
+              placeholder="Datos de contacto adicionales u observaciones"
+              class="form-control mb-2"></textarea>
+
+    <button class="btn btn-success">Agregar Proveedor</button>
+</form>
+
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Dirección física o web</th>
+            <th>Teléfono</th>
+            <th>Observaciones</th>
+            <th>Productos</th>
+            <th>Insumos</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for proveedor in proveedores %}
+    <tr>
+        <td>{{ proveedor.id }}</td>
+        <td>{{ proveedor.nombre }}</td>
+        <td>{{ proveedor.direccion_contacto or "" }}</td>
+        <td>{{ proveedor.telefono or "" }}</td>
+        <td>{{ proveedor.observaciones or "" }}</td>
+        <td>{{ proveedor.productos_count }}</td>
+        <td>{{ proveedor.insumos_count }}</td>
+        <td>
+            <a href="{{ url_for('editar_proveedor', id=proveedor.id) }}"
+               class="btn btn-sm btn-warning">
+               Editar
+            </a>
+
+            <a href="{{ url_for('eliminar_proveedor', id=proveedor.id) }}"
+               class="btn btn-sm btn-danger"
+               onclick="return confirm('¿Eliminar este proveedor?')">
+               Eliminar
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

@@ -3,6 +3,12 @@
 
 <h2>Abrir Caja</h2>
 
+{% if caja_requerida %}
+<div class="alert alert-warning">
+    Para comenzar a usar el sistema después de las 9:30 am, abre la caja del día.
+</div>
+{% endif %}
+
 <form method="POST">
     <input type="number" step="0.01"
            name="monto_inicial"

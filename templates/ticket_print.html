@@ -1,44 +1,157 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+<meta charset="UTF-8">
+<title>Ticket #{{ venta.id }}</title>
 <style>
-body {
-    width: 280px;
-    font-family: monospace;
+@page {
+    size: 80mm auto;
+    margin: 4mm 6mm;
 }
-hr {
-    border-top: 1px dashed black;
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 68mm;
+    margin: 0 auto;
+    color: #000;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.center {
+    text-align: center;
+}
+
+.logo {
+    display: block;
+    width: 64mm;
+    max-width: 100%;
+    max-height: 36mm;
+    margin: 0 auto 1mm;
+    object-fit: contain;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.line {
+    border: 0;
+    border-top: 1px dashed #000;
+    margin: 2mm 0;
+}
+
+.row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+    align-items: flex-start;
+}
+
+.row span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.row span:last-child {
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.item {
+    margin: 1.5mm 0;
+}
+
+.item-name {
+    font-weight: 700;
+}
+
+.total {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 2mm;
+}
+
+.thanks {
+    margin-top: 3mm;
+}
+
+.copy {
+    page-break-after: always;
+}
+
+.copy:last-child {
+    page-break-after: auto;
+}
+
+p {
+    margin: 0.8mm 0;
+}
+
+@media print {
+    body {
+        width: 68mm;
+    }
 }
 </style>
 </head>
 <body onload="window.print()">
 
-<center>
-<h4>🐾 Mi Querido Lomito</h4>
-<p>Ticket #{{ venta.id }}</p>
-<p>{{ venta.fecha }}</p>
-</center>
+{% for copia in ["Cliente", "Negocio"] %}
+<section class="copy">
+<div class="center">
+    <img class="logo"
+         src="{{ url_for('static', filename='img/Logo con redes ticket.png') }}"
+         alt="Mi Querido Lomito">
+    <p>Ticket #{{ venta.id }}</p>
+    <p>Copia {{ copia }}</p>
+    <p>{{ venta.fecha }}</p>
+</div>
 
-<hr>
+<hr class="line">
+
+{% if venta.cliente %}
+<p><strong>Dueño:</strong> {{ venta.cliente }}</p>
+{% endif %}
+
+{% if venta.mascota %}
+<p><strong>Mascota:</strong> {{ venta.mascota }}</p>
+{% endif %}
+
+{% if venta.cliente or venta.mascota %}
+<hr class="line">
+{% endif %}
 
 {% for d in detalles %}
-<p>
-{{ d.nombre }}
-<br>
-{{ d.cantidad }} x ${{ d.subtotal / d.cantidad }}
-<br>
-Subtotal: ${{ d.subtotal }}
-</p>
-<hr>
+<div class="item">
+    <div class="item-name">{{ d.nombre }}</div>
+    <div class="row">
+        <span>{{ d.cantidad }} x ${{ "%.2f"|format(d.subtotal / d.cantidad) }}</span>
+        <span>${{ "%.2f"|format(d.subtotal) }}</span>
+    </div>
+</div>
 {% endfor %}
 
-<h3>Total: ${{ venta.total }}</h3>
-<p>Método: {{ venta.metodo_pago }}</p>
+<hr class="line">
 
-<hr>
-<center>
-Gracias por su preferencia
-</center>
+<div class="row total">
+    <span>Total</span>
+    <span>${{ "%.2f"|format(venta.total) }}</span>
+</div>
+<p>Pago con: {{ venta.metodo_pago }}</p>
+
+<hr class="line">
+
+<div class="center">
+    <p>Horario de atención</p>
+    <p>Lunes a Sábado</p>
+    <p>10:00 am a 5:00 pm</p>
+    <p class="thanks">Gracias por su preferencia</p>
+</div>
+</section>
+{% endfor %}
 
 </body>
 </html>

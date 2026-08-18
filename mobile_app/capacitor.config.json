@@ -1,0 +1,13 @@
+{
+  "appId": "com.miqueridolomito.crm",
+  "appName": "Mi Querido Lomito",
+  "webDir": "www",
+  "server": {
+    "url": "https://crm-lomito.onrender.com",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

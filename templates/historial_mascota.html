@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Historial de {{ mascota.nombre }}</h2>
+
+{% if mascota.foto_drive_id %}
+<div class="mb-3">
+    <img src="{{ url_for('foto_mascota', id=mascota.id, v=mascota.foto_actualizada) }}"
+         alt="Foto de {{ mascota.nombre }}"
+         loading="lazy"
+         style="width: 180px; height: 180px; object-fit: cover; border: 1px solid #dee2e6; border-radius: 6px;">
+    {% if mascota.foto_drive_web_view_url %}
+    <a href="{{ mascota.foto_drive_web_view_url }}"
+       class="btn btn-outline-secondary btn-sm ms-2"
+       target="_blank"
+       rel="noopener">
+        Abrir en Drive
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <table class="table table-bordered" data-search="false">
+            <tr><th>Dueño</th><td>{{ mascota.dueno }}</td></tr>
+            <tr><th>Teléfono</th><td>{{ mascota.telefono or "" }}</td></tr>
+            <tr><th>Dirección</th><td>{{ mascota.direccion or "" }}</td></tr>
+            <tr><th>Especie</th><td>{{ mascota.especie }}</td></tr>
+            <tr><th>Raza</th><td>{{ mascota.raza or "" }}</td></tr>
+            <tr><th>Edad</th><td>{{ mascota.edad or "" }}</td></tr>
+            <tr><th>Cumpleaños/adopción</th><td>{{ mascota.fecha_especial or "" }}</td></tr>
+        </table>
+    </div>
+    <div class="col-md-6">
+        <table class="table table-bordered" data-search="false">
+            <tr><th>Género</th><td>{{ mascota.genero or "" }}</td></tr>
+            <tr><th>Talla</th><td>{{ mascota.talla or "" }}</td></tr>
+            <tr><th>Color</th><td>{{ mascota.color or "" }}</td></tr>
+            <tr><th>Alergias</th><td>{{ mascota.alergias or "" }}</td></tr>
+            <tr><th>Observaciones</th><td>{{ mascota.notas or "" }}</td></tr>
+        </table>
+    </div>
+</div>
+
+<h4>Tiempo promedio por servicio</h4>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+    <tr>
+        <th>Servicio</th>
+        <th>Promedio</th>
+        <th>Servicios realizados</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for p in promedios %}
+    <tr>
+        <td>{{ p.servicio or "Sin servicio" }}</td>
+        <td>{{ "%.0f"|format(p.promedio_min) }} min</td>
+        <td>{{ p.total }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h4>Ventas y servicios realizados</h4>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+    <tr>
+        <th>Venta</th>
+        <th>Fecha</th>
+        <th>Concepto</th>
+        <th>Cantidad</th>
+        <th>Costo</th>
+        <th>Subtotal</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for v in ventas %}
+    <tr>
+        <td>{{ v.venta_id }}</td>
+        <td>{{ v.fecha }}</td>
+        <td>{{ v.servicio or v.producto }}</td>
+        <td>{{ v.cantidad }}</td>
+        <td>${{ v.precio_unitario }}</td>
+        <td>${{ v.subtotal }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h4>Citas y observaciones</h4>
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+    <tr>
+        <th>Fecha</th>
+        <th>Servicio</th>
+        <th>Estado</th>
+        <th>Tiempo</th>
+        <th>Observaciones</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for c in citas %}
+    <tr>
+        <td>{{ c.fecha }}</td>
+        <td>{{ c.servicio or "Sin servicio" }}</td>
+        <td>{{ c.estado }}</td>
+        <td>{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
+        <td>{{ c.observaciones or c.notas or "" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

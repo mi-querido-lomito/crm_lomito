@@ -3,7 +3,9 @@
 
 <h2>Cerrar Caja</h2>
 
+{% if session["rol"] == "admin" %}
 <p>Monto inicial: ${{ caja.monto_inicial }}</p>
+{% endif %}
 
 <form method="POST">
 
@@ -20,4 +22,3 @@
 </form>
 
 {% endblock %}
-

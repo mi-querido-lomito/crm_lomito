@@ -4,7 +4,9 @@
 {% if caja_abierta %}
 <div class="alert alert-success">
     💰 Caja ABIERTA desde {{ caja_abierta.fecha_apertura }}
+    {% if session["rol"] == "admin" %}
     | Monto inicial: ${{ caja_abierta.monto_inicial }}
+    {% endif %}
 </div>
 {% else %}
 <div class="alert alert-danger">
@@ -14,24 +16,13 @@
 
 <h2>Dashboard</h2>
 
+{% if session["rol"] == "admin" %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-const ctx = document.getElementById('ventasChart');
-
-new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: [{% for v in ventas_7_dias %}"{{ v.dia }}",{% endfor %}],
-        datasets: [{
-            label: 'Ventas',
-            data: [{% for v in ventas_7_dias %}{{ v.total }},{% endfor %}],
-            borderWidth: 1
-        }]
-    }
-});
-</script>
+{% endif %}
 
 <div class="row mb-4">
+
+    {% if session["rol"] == "admin" %}
 
     <div class="col-md-3">
         <div class="card text-center shadow">
@@ -50,7 +41,7 @@ new Chart(ctx, {
             </div>
         </div>
     </div>
-
+    
     <div class="col-md-3">
         <div class="card text-center shadow">
             <div class="card-body">
@@ -68,6 +59,7 @@ new Chart(ctx, {
             </div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 <hr>
@@ -116,21 +108,39 @@ new Chart(ctx, {
 
 {% if citas_proximas %}
 <div class="alert alert-info mt-3">
-    <strong>🔔 Citas próximas (24h):</strong>
+    <strong>🔔 Citas próximas de la semana:</strong>
     <ul>
     {% for c in citas_proximas %}
         <li>
-            {{ c.mascota }} - {{ c.fecha }}
+            {{ c.mascota }}{% if c.servicio %} - {{ c.servicio }}{% endif %} - {{ c.fecha }}
         </li>
     {% endfor %}
     </ul>
 </div>
 {% endif %}
 
+{% if session["rol"] == "admin" %}
 <h4>Ventas últimos 7 días</h4>
 <canvas id="ventasChart"></canvas>
 
-{% if bajo_stock %}
+<script>
+const ctx = document.getElementById('ventasChart');
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: [{% for v in ventas_7_dias %}"{{ v.dia }}",{% endfor %}],
+        datasets: [{
+            label: 'Ventas',
+            data: [{% for v in ventas_7_dias %}{{ v.total }},{% endfor %}],
+            borderWidth: 1
+        }]
+    }
+});
+</script>
+{% endif %}
+
+{% if session["rol"] == "admin" and bajo_stock %}
 <div class="alert alert-warning mt-4">
     <strong>⚠ Productos con bajo stock:</strong>
     <ul>

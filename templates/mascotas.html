@@ -3,45 +3,297 @@
 
 <h2>Mascotas</h2>
 
-<form method="POST" class="mb-4">
-    <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
+<style>
+.mascota-foto-thumb {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #f8f9fa;
+}
+</style>
 
-    <select name="especie" class="form-control mb-2">
-        <option value="Perro">Perro</option>
-        <option value="Gato">Gato</option>
-    </select>
+<form method="POST" class="mb-4" enctype="multipart/form-data">
+    <div class="row">
+        <div class="col-md-4">
+            <input name="nombre" placeholder="Nombre mascota" class="form-control mb-2" required>
+        </div>
+        <div class="col-md-4">
+            <select name="especie" class="form-control mb-2">
+                <option value="Perro">Perro</option>
+                <option value="Gato">Gato</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <input name="raza" placeholder="Raza" class="form-control mb-2">
+        </div>
+        <div class="col-md-3">
+            <input type="number" name="edad" placeholder="Edad" class="form-control mb-2">
+        </div>
+        <div class="col-md-3">
+            <input type="date" name="fecha_especial" class="form-control mb-2" title="Cumpleaños o fecha de adopción">
+        </div>
+        <div class="col-md-3">
+            <select name="genero" class="form-control mb-2">
+                <option value="">Género</option>
+                <option value="Macho">Macho</option>
+                <option value="Hembra">Hembra</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input name="talla" placeholder="Talla" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="color" placeholder="Color" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="alergias" placeholder="Alergias" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input name="notas" placeholder="Observaciones generales" class="form-control mb-2">
+        </div>
+        <div class="col-md-4">
+            <input type="file"
+                   name="foto"
+                   accept="image/jpeg,image/png,image/gif,image/webp"
+                   class="form-control mb-2">
+        </div>
+    </div>
 
-    <select name="cliente_id" class="form-control mb-2">
-        {% for c in clientes %}
-        <option value="{{ c.id }}">{{ c.nombre }}</option>
-        {% endfor %}
-    </select>
+    <div class="border rounded p-3 mb-3">
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" value="1" id="nuevoCliente" name="nuevo_cliente">
+            <label class="form-check-label" for="nuevoCliente">Registrar cliente nuevo como dueño</label>
+        </div>
+
+        <div id="clienteExistente">
+            <input type="hidden" name="cliente_id" id="cliente_id">
+
+            <div class="position-relative mb-2">
+                <input type="text"
+                       id="clienteSearch"
+                       class="form-control"
+                       autocomplete="off"
+                       placeholder="Buscar dueño por nombre, teléfono, dirección o mascota">
+
+                <div id="clienteResults"
+                     class="list-group position-absolute w-100 shadow-sm d-none"
+                     style="z-index: 1050; max-height: 260px; overflow-y: auto;">
+                </div>
+            </div>
+
+            <div id="clienteSelected" class="form-text mb-2">
+                Selecciona un dueño existente de la lista.
+            </div>
+        </div>
+
+        <div id="clienteNuevo" class="d-none">
+            <input name="cliente_nombre" placeholder="Nombre del cliente" class="form-control mb-2">
+            <input name="cliente_telefono" placeholder="Teléfono" class="form-control mb-2">
+            <textarea name="cliente_direccion" placeholder="Dirección o casa" class="form-control mb-2"></textarea>
+        </div>
+    </div>
 
     <button class="btn btn-success">Agregar Mascota</button>
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
+        <th>Foto</th>
         <th>Nombre</th>
         <th>Especie</th>
+        <th>Raza</th>
+        <th>Edad</th>
+        <th>Género</th>
+        <th>Talla</th>
+        <th>Color</th>
         <th>Dueño</th>
         <th>Acciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for m in mascotas %}
     <tr>
         <td>{{ m.id }}</td>
+        <td>
+            {% if m.foto_drive_id %}
+            <a href="{{ m.foto_drive_web_view_url or url_for('foto_mascota', id=m.id) }}"
+               target="_blank"
+               rel="noopener">
+                <img src="{{ url_for('foto_mascota', id=m.id, v=m.foto_actualizada) }}"
+                     alt="Foto de {{ m.nombre }}"
+                     loading="lazy"
+                     class="mascota-foto-thumb">
+            </a>
+            {% else %}
+            <span class="text-muted">Sin foto</span>
+            {% endif %}
+        </td>
         <td>{{ m.nombre }}</td>
         <td>{{ m.especie }}</td>
+        <td>{{ m.raza or "" }}</td>
+        <td>{{ m.edad or "" }}</td>
+        <td>{{ m.genero or "" }}</td>
+        <td>{{ m.talla or "" }}</td>
+        <td>{{ m.color or "" }}</td>
         <td>{{ m.dueno }}</td>
         <td>
+            <a href="{{ url_for('historial_mascota', id=m.id) }}"
+               class="btn btn-sm btn-info">
+               Historial
+            </a>
+
             <a href="{{ url_for('editar_mascota', id=m.id) }}"
                 class="btn btn-sm btn-warning">
-                ✏ Editar
+                Editar
             </a>
-</td>
+
+            {% if session["rol"] == "admin" %}
+            <a href="{{ url_for('eliminar_mascota', id=m.id) }}"
+                class="btn btn-sm btn-danger"
+                onclick="return confirm('¿Eliminar mascota?')">
+                Eliminar
+            </a>
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
+
+<script>
+const nuevoCliente = document.getElementById("nuevoCliente");
+const clienteExistente = document.getElementById("clienteExistente");
+const clienteNuevo = document.getElementById("clienteNuevo");
+const clienteIdInput = document.getElementById("cliente_id");
+const clienteSearch = document.getElementById("clienteSearch");
+const clienteResults = document.getElementById("clienteResults");
+const clienteSelected = document.getElementById("clienteSelected");
+const mascotasForm = nuevoCliente.closest("form");
+
+nuevoCliente.addEventListener("change", function() {
+    clienteExistente.classList.toggle("d-none", nuevoCliente.checked);
+    clienteNuevo.classList.toggle("d-none", !nuevoCliente.checked);
+});
+
+function normalizeSearch(value) {
+    return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+const mascotasPorCliente = {};
+{% for m in mascotas %}
+(mascotasPorCliente[{{ m.cliente_id }}] = mascotasPorCliente[{{ m.cliente_id }}] || []).push({{ m.nombre|tojson }});
+{% endfor %}
+
+const clientesConMascotas = [
+    {% for c in clientes %}
+    {
+        id: {{ c.id }},
+        nombre: {{ c.nombre|tojson }},
+        telefono: {{ (c.telefono or "")|tojson }},
+        direccion: {{ (c.direccion or "")|tojson }},
+        mascotas: mascotasPorCliente[{{ c.id }}] || []
+    },
+    {% endfor %}
+].map(function(cliente) {
+    cliente.searchText = normalizeSearch(
+        cliente.nombre + " " + cliente.telefono + " " + cliente.direccion + " " + cliente.mascotas.join(" ")
+    );
+    return cliente;
+});
+
+function clienteDetalle(cliente) {
+    const datos = [];
+
+    if (cliente.telefono) {
+        datos.push("Tel: " + cliente.telefono);
+    }
+
+    if (cliente.direccion) {
+        datos.push("Dirección: " + cliente.direccion);
+    }
+
+    if (cliente.mascotas.length) {
+        datos.push("Mascotas: " + cliente.mascotas.join(", "));
+    }
+
+    return datos.length ? datos.join(" | ") : "Sin datos adicionales";
+}
+
+function hideClienteResults() {
+    clienteResults.classList.add("d-none");
+}
+
+function selectCliente(cliente) {
+    clienteIdInput.value = cliente.id;
+    clienteSearch.value = cliente.nombre;
+    clienteSelected.textContent = "Dueño seleccionado: " + cliente.nombre + " | " + clienteDetalle(cliente);
+    clienteSelected.className = "form-text text-success mb-2";
+    hideClienteResults();
+}
+
+function renderClienteResults() {
+    const query = normalizeSearch(clienteSearch.value.trim());
+    clienteIdInput.value = "";
+    clienteSelected.textContent = "Selecciona un dueño existente de la lista.";
+    clienteSelected.className = "form-text mb-2";
+    clienteResults.innerHTML = "";
+
+    if (query.length === 0) {
+        hideClienteResults();
+        return;
+    }
+
+    const matches = [];
+    for (let index = 0; index < clientesConMascotas.length && matches.length < 12; index += 1) {
+        if (clientesConMascotas[index].searchText.includes(query)) {
+            matches.push(clientesConMascotas[index]);
+        }
+    }
+
+    if (matches.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "list-group-item text-muted";
+        empty.textContent = "No se encontraron dueños con ese criterio.";
+        clienteResults.appendChild(empty);
+        clienteResults.classList.remove("d-none");
+        return;
+    }
+
+    matches.forEach(function(cliente) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "list-group-item list-group-item-action";
+        button.innerHTML = "<strong>" + cliente.nombre + "</strong><br><small>" + clienteDetalle(cliente) + "</small>";
+        button.addEventListener("click", function() {
+            selectCliente(cliente);
+        });
+        clienteResults.appendChild(button);
+    });
+
+    clienteResults.classList.remove("d-none");
+}
+
+clienteSearch.addEventListener("input", renderClienteResults);
+clienteSearch.addEventListener("focus", renderClienteResults);
+
+document.addEventListener("click", function(event) {
+    if (!clienteSearch.contains(event.target) && !clienteResults.contains(event.target)) {
+        hideClienteResults();
+    }
+});
+
+mascotasForm.addEventListener("submit", function(event) {
+    if (!nuevoCliente.checked && !clienteIdInput.value) {
+        event.preventDefault();
+        clienteSelected.textContent = "Selecciona un dueño de la lista o marca \"Registrar cliente nuevo\".";
+        clienteSelected.className = "form-text text-danger mb-2";
+        clienteSearch.focus();
+    }
+});
+</script>
 
 {% endblock %}

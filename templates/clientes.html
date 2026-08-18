@@ -6,34 +6,53 @@
 <form method="POST" class="mb-4">
     <input name="nombre" placeholder="Nombre" class="form-control mb-2" required>
     <input name="telefono" placeholder="Teléfono" class="form-control mb-2">
-    <input name="email" placeholder="Email" class="form-control mb-2">
+    <textarea name="direccion" placeholder="Dirección o casa" class="form-control mb-2"></textarea>
     <button class="btn btn-success">Agregar Cliente</button>
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
         <th>Nombre</th>
         <th>Teléfono</th>
-        <th>Email</th>
+        <th>Dirección o casa</th>
+        <th>Mascotas</th>
         <th>Acciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for c in clientes %}
     <tr>
         <td>{{ c.id }}</td>
         <td>{{ c.nombre }}</td>
         <td>{{ c.telefono }}</td>
-        <td>{{ c.email }}</td>
+        <td>{{ c.direccion }}</td>
+        <td>{{ c.mascotas_nombres or "Sin mascotas" }}</td>
         <td>
             <a href="{{ url_for('editar_cliente', id=c.id) }}"
-                class="btn btn-sm btn-warning">
-                ✏ Editar
+               class="btn btn-sm btn-warning">
+               Editar
             </a>
+
+            {% if session["rol"] == "admin" %}
+            <a href="{{ url_for('eliminar_cliente', id=c.id) }}"
+               class="btn btn-sm btn-danger"
+               onclick="return confirm('¿Eliminar cliente?')">
+               Eliminar ❌
+            </a>
+            {% endif %}
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
-<a href="{{ url_for('export_clientes_pdf') }}" class="btn btn-primary">Exportar a PDF</a>
+{% if session["rol"] == "admin" %}
+<a href="{{ url_for('export_clientes_pdf') }}" 
+   class="btn btn-primary">
+   Exportar a PDF
+</a>
+{% endif %}
 
 {% endblock %}
