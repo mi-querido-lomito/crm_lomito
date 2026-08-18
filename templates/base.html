@@ -32,19 +32,51 @@
         }
 
         /* Colores distintos de encabezado por cada ventana, para
-           distinguir de un vistazo a que seccion pertenece cada tabla. */
-        .thead-servicios { background-color: #0d6efd; color: #fff; }
-        .thead-insumos { background-color: #20c997; color: #fff; }
-        .thead-mascotas { background-color: #198754; color: #fff; }
-        .thead-clientes { background-color: #6610f2; color: #fff; }
-        .thead-gastos { background-color: #dc3545; color: #fff; }
-        .thead-citas { background-color: #fd7e14; color: #fff; }
-        .thead-historial { background-color: #0dcaf0; color: #212529; }
-        .thead-proveedores { background-color: #6f42c1; color: #fff; }
-        .thead-reporte { background-color: #d63384; color: #fff; }
-        .thead-ventas { background-color: #ffc107; color: #212529; }
-        .thead-ventaslista { background-color: #495057; color: #fff; }
-        .thead-verventa { background-color: #adb5bd; color: #212529; }
+           distinguir de un vistazo a que seccion pertenece cada tabla.
+           El renglon alterno (table-striped) se tine con el mismo color
+           del encabezado en vez del gris neutro por defecto de Bootstrap. */
+        /* Bootstrap pinta cada celda con background-color: var(--bs-table-bg),
+           asi que el color debe fijarse como variable (hereda al <th>) y no
+           como background-color directo en el <thead> (no se heredaria). */
+        .thead-productos { --bs-table-bg: #212529; --bs-table-color: #fff; }
+        thead.thead-productos ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(33, 37, 41, .06); }
+
+        .thead-servicios { --bs-table-bg: #0d6efd; --bs-table-color: #fff; }
+        thead.thead-servicios ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(13, 110, 253, .08); }
+
+        .thead-insumos { --bs-table-bg: #0e7c66; --bs-table-color: #fff; }
+        thead.thead-insumos ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(14, 124, 102, .08); }
+
+        .thead-mascotas { --bs-table-bg: #198754; --bs-table-color: #fff; }
+        thead.thead-mascotas ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(25, 135, 84, .08); }
+
+        .thead-clientes { --bs-table-bg: #6610f2; --bs-table-color: #fff; }
+        thead.thead-clientes ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(102, 16, 242, .07); }
+
+        .thead-gastos { --bs-table-bg: #dc3545; --bs-table-color: #fff; }
+        thead.thead-gastos ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(220, 53, 69, .07); }
+
+        .thead-citas { --bs-table-bg: #fd7e14; --bs-table-color: #fff; }
+        thead.thead-citas ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(253, 126, 20, .09); }
+
+        .thead-historial { --bs-table-bg: #0dcaf0; --bs-table-color: #212529; }
+        thead.thead-historial ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(13, 202, 240, .10); }
+        th.thead-historial { --bs-table-bg: #0dcaf0; --bs-table-color: #212529; }
+
+        .thead-proveedores { --bs-table-bg: #46566b; --bs-table-color: #fff; }
+        thead.thead-proveedores ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(70, 86, 107, .07); }
+
+        .thead-reporte { --bs-table-bg: #d63384; --bs-table-color: #fff; }
+        thead.thead-reporte ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(214, 51, 132, .07); }
+
+        .thead-ventas { --bs-table-bg: #ffc107; --bs-table-color: #212529; }
+        thead.thead-ventas ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(255, 193, 7, .12); }
+
+        .thead-ventaslista { --bs-table-bg: #495057; --bs-table-color: #fff; }
+        thead.thead-ventaslista ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(73, 80, 87, .07); }
+
+        .thead-verventa { --bs-table-bg: #6c757d; --bs-table-color: #fff; }
+        thead.thead-verventa ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(108, 117, 125, .07); }
     </style>
 </head>
 
