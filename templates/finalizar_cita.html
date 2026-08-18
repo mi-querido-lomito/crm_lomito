@@ -32,20 +32,35 @@
         <h5 class="mb-2">Finalizar otras citas del mismo dueño hoy</h5>
         <p class="form-text mb-2">
             Se marcarán como completadas y, si tienen servicio asignado, se agregarán al carrito para cobrarlas juntas.
+            Cada mascota guarda su propio tiempo y observaciones en su historial.
         </p>
 
         {% for cita_relacionada in citas_mismo_dueno %}
-        <div class="form-check">
-            <input class="form-check-input"
-                   type="checkbox"
-                   name="citas_mismo_dueno"
-                   value="{{ cita_relacionada.id }}"
-                   id="citaRelacionada{{ cita_relacionada.id }}">
-            <label class="form-check-label" for="citaRelacionada{{ cita_relacionada.id }}">
-                {{ cita_relacionada.mascota }} -
-                {{ cita_relacionada.servicio or "Sin servicio" }} -
-                {{ cita_relacionada.fecha }}
-            </label>
+        <div class="border rounded p-2 mb-2">
+            <div class="form-check mb-2">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="citas_mismo_dueno"
+                       value="{{ cita_relacionada.id }}"
+                       id="citaRelacionada{{ cita_relacionada.id }}">
+                <label class="form-check-label" for="citaRelacionada{{ cita_relacionada.id }}">
+                    <strong>{{ cita_relacionada.mascota }}</strong> -
+                    {{ cita_relacionada.servicio or "Sin servicio" }} -
+                    {{ cita_relacionada.fecha }}
+                </label>
+            </div>
+
+            <label class="form-text mb-0">Tiempo transcurrido (min):</label>
+            <input type="number"
+                   name="tiempo_servicio_min_{{ cita_relacionada.id }}"
+                   min="1"
+                   class="form-control form-control-sm mb-2">
+
+            <label class="form-text mb-0">Observaciones de {{ cita_relacionada.mascota }}:</label>
+            <textarea name="observaciones_{{ cita_relacionada.id }}"
+                      class="form-control form-control-sm"
+                      rows="2"
+                      placeholder="Observaciones del servicio realizado a {{ cita_relacionada.mascota }}"></textarea>
         </div>
         {% endfor %}
     </div>

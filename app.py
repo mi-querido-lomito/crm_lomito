@@ -18,6 +18,7 @@ import base64
 import io
 import json
 import os
+import textwrap
 import uuid
 from flask import send_file
 from flask import session
@@ -58,7 +59,6 @@ def rol_requerido(roles):
 app = Flask(__name__)
 app.config.from_object(Config)
 
-app.secret_key = "SistemasRacks.23"
 schema_checked = False
 
 
@@ -87,7 +87,14 @@ MASCOTA_FOTO_FORMATOS = {
 @app.errorhandler(413)
 def archivo_demasiado_grande(error):
     flash("La imagen supera el tamaño máximo permitido")
-    return redirect(url_for("mascotas"))
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.errorhandler(500)
+def error_interno(error):
+    app.logger.exception("Error interno no controlado")
+    flash("Ocurrió un error inesperado. Por favor intenta de nuevo.")
+    return redirect(request.referrer or url_for("dashboard"))
 
 
 def obtener_google_drive_folder_id():
@@ -178,7 +185,7 @@ def crear_google_drive_service():
     )
 
 
-def validar_foto_mascota(archivo):
+def validar_foto_imagen(archivo):
     if not archivo or not archivo.filename:
         return None
 
@@ -213,8 +220,8 @@ def validar_foto_mascota(archivo):
     }
 
 
-def subir_foto_mascota_drive(archivo, mascota_id, nombre_mascota):
-    foto = validar_foto_mascota(archivo)
+def subir_foto_drive(archivo, prefijo, entidad_id, nombre):
+    foto = validar_foto_imagen(archivo)
     if not foto:
         return None
 
@@ -224,8 +231,8 @@ def subir_foto_mascota_drive(archivo, mascota_id, nombre_mascota):
         raise RuntimeError("Faltan dependencias de Google Drive; ejecuta pip install -r requirements.txt") from exc
 
     service = crear_google_drive_service()
-    nombre_limpio = secure_filename(nombre_mascota or "mascota") or "mascota"
-    nombre_drive = f"mascota_{mascota_id}_{nombre_limpio}_{uuid.uuid4().hex}.{foto['extension']}"
+    nombre_limpio = secure_filename(nombre or prefijo) or prefijo
+    nombre_drive = f"{prefijo}_{entidad_id}_{nombre_limpio}_{uuid.uuid4().hex}.{foto['extension']}"
 
     media = MediaIoBaseUpload(
         io.BytesIO(foto["contenido"]),
@@ -278,6 +285,16 @@ def eliminar_foto_drive_silencioso(file_id):
     try:
         eliminar_foto_drive(file_id)
     except RuntimeError:
+        pass
+
+
+def reconectar_mysql_si_hace_falta():
+    # Las llamadas a Google Drive pueden tardar varios segundos; si la
+    # conexion a MySQL queda inactiva ese tiempo, el host remoto puede
+    # cerrarla y la siguiente consulta fallaria con "server has gone away".
+    try:
+        mysql.connection.ping(True)
+    except Exception:
         pass
 
 
@@ -351,6 +368,61 @@ def asegurar_codigo_barra_actual(tabla, registro_id):
     return codigo
 
 
+def generar_etiqueta_png(nombre, precio, codigo_barras):
+    from PIL import Image, ImageDraw, ImageFont
+    import barcode
+    from barcode.writer import ImageWriter
+
+    ancho, alto = 480, 320  # ~60mm x 40mm a 8 px/mm (mismo tamaño que la etiqueta HTML)
+    lienzo = Image.new("RGB", (ancho, alto), "white")
+    dibujo = ImageDraw.Draw(lienzo)
+
+    fuente_nombre = ImageFont.load_default(size=26)
+    fuente_precio = ImageFont.load_default(size=22)
+    fuente_codigo = ImageFont.load_default(size=16)
+
+    y = 12
+    for linea in textwrap.wrap(nombre or "", width=24)[:3]:
+        ancho_texto = dibujo.textlength(linea, font=fuente_nombre)
+        dibujo.text(((ancho - ancho_texto) / 2, y), linea, fill="black", font=fuente_nombre)
+        y += 30
+
+    texto_precio = f"${float(precio or 0):.2f}"
+    ancho_precio = dibujo.textlength(texto_precio, font=fuente_precio)
+    dibujo.text(((ancho - ancho_precio) / 2, y + 4), texto_precio, fill="black", font=fuente_precio)
+    y += 44
+
+    if codigo_barras:
+        clase_codigo = barcode.get_barcode_class("code128")
+        codigo_obj = clase_codigo(str(codigo_barras), writer=ImageWriter())
+        buffer_codigo = io.BytesIO()
+        codigo_obj.write(buffer_codigo, options={
+            "write_text": False,
+            "module_height": 12,
+            "quiet_zone": 2,
+        })
+        buffer_codigo.seek(0)
+
+        imagen_codigo = Image.open(buffer_codigo)
+        # El texto del codigo y el margen inferior necesitan ~26px propios;
+        # la escala respeta tanto el ancho como el alto restante del lienzo.
+        ancho_max = ancho - 40
+        alto_max = max(alto - y - 26, 10)
+        escala = min(ancho_max / imagen_codigo.width, alto_max / imagen_codigo.height)
+        nuevo_tamano = (int(imagen_codigo.width * escala), int(imagen_codigo.height * escala))
+        imagen_codigo = imagen_codigo.resize(nuevo_tamano)
+        lienzo.paste(imagen_codigo, ((ancho - nuevo_tamano[0]) // 2, y))
+        y += nuevo_tamano[1] + 6
+
+        ancho_codigo_txt = dibujo.textlength(str(codigo_barras), font=fuente_codigo)
+        dibujo.text(((ancho - ancho_codigo_txt) / 2, y), str(codigo_barras), fill="black", font=fuente_codigo)
+
+    salida = io.BytesIO()
+    lienzo.save(salida, format="PNG")
+    salida.seek(0)
+    return salida
+
+
 def rellenar_codigos_barras_faltantes(tabla):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute(f"""
@@ -417,9 +489,19 @@ def asegurar_schema_crm():
         },
         "productos": {
             "proveedor_id": "INT NULL",
+            "foto_drive_id": "VARCHAR(255) NULL",
+            "foto_drive_nombre": "VARCHAR(255) NULL",
+            "foto_mime_type": "VARCHAR(100) NULL",
+            "foto_drive_web_view_url": "TEXT NULL",
+            "foto_actualizada": "DATETIME NULL",
         },
         "insumos": {
             "proveedor_id": "INT NULL",
+            "foto_drive_id": "VARCHAR(255) NULL",
+            "foto_drive_nombre": "VARCHAR(255) NULL",
+            "foto_mime_type": "VARCHAR(100) NULL",
+            "foto_drive_web_view_url": "TEXT NULL",
+            "foto_actualizada": "DATETIME NULL",
         },
         "mascotas": {
             "raza": "VARCHAR(100) NULL",
@@ -444,6 +526,9 @@ def asegurar_schema_crm():
         "ventas": {
             "mascota_id": "INT NULL",
             "cita_id": "INT NULL",
+        },
+        "detalle_venta": {
+            "mascota_id": "INT NULL",
         },
     }
 
@@ -970,17 +1055,23 @@ def mascotas():
                     flash("El nombre del nuevo cliente es obligatorio")
                     cursor.close()
                     return redirect(url_for("mascotas"))
+            elif not cliente_id:
+                flash("Selecciona un dueño o registra un cliente nuevo")
+                cursor.close()
+                return redirect(url_for("mascotas"))
 
+            # La foto se sube antes de escribir en la BD: si Google Drive
+            # tarda y la conexion a MySQL se cae mientras tanto, no queda
+            # un cliente/mascota a medio insertar.
+            foto_drive = subir_foto_drive(request.files.get("foto"), "mascota", "nueva", nombre)
+            reconectar_mysql_si_hace_falta()
+
+            if nuevo_cliente == "1":
                 cursor.execute("""
                     INSERT INTO clientes (nombre, telefono, direccion)
                     VALUES (%s, %s, %s)
                 """, (cliente_nombre, cliente_telefono, cliente_direccion))
                 cliente_id = cursor.lastrowid
-
-            if not cliente_id:
-                flash("Selecciona un dueño o registra un cliente nuevo")
-                cursor.close()
-                return redirect(url_for("mascotas"))
 
             datos = (
                 nombre,
@@ -1002,7 +1093,6 @@ def mascotas():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, datos)
             mascota_id = cursor.lastrowid
-            foto_drive = subir_foto_mascota_drive(request.files.get("foto"), mascota_id, nombre)
 
             if foto_drive:
                 cursor.execute("""
@@ -1023,7 +1113,7 @@ def mascotas():
 
             mysql.connection.commit()
             flash("Mascota registrada correctamente")
-        except (ValueError, RuntimeError) as error:
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
             mysql.connection.rollback()
             flash(str(error))
 
@@ -1086,7 +1176,8 @@ def editar_mascota(id):
 
         try:
             if reemplaza_foto:
-                nueva_foto_drive = subir_foto_mascota_drive(foto_archivo, id, nombre)
+                nueva_foto_drive = subir_foto_drive(foto_archivo, "mascota", id, nombre)
+                reconectar_mysql_si_hace_falta()
 
             cursor.execute("""
                 UPDATE mascotas
@@ -1132,7 +1223,7 @@ def editar_mascota(id):
                 """, (id,))
 
             mysql.connection.commit()
-        except (ValueError, RuntimeError) as error:
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
             mysql.connection.rollback()
             if nueva_foto_drive:
                 eliminar_foto_drive_silencioso(nueva_foto_drive["foto_drive_id"])
@@ -1245,10 +1336,10 @@ def historial_mascota(id):
         JOIN detalle_venta d ON d.venta_id = v.id
         LEFT JOIN servicios s ON d.servicio_id = s.id
         LEFT JOIN productos p ON d.producto_id = p.id
-        WHERE v.mascota_id=%s
+        WHERE (d.mascota_id=%s OR (d.mascota_id IS NULL AND v.mascota_id=%s))
         AND v.estado='activa'
         ORDER BY v.fecha DESC
-    """, (id,))
+    """, (id, id))
     ventas = cursor.fetchall()
 
     cursor.execute("""
@@ -1289,13 +1380,42 @@ def productos():
         stock = request.form["stock"]
         precio = request.form["precio"]
         proveedor_id = request.form.get("proveedor_id") or None
-        codigo = generar_codigo_barra("PROD")
 
-        cursor.execute(
-            "INSERT INTO productos (nombre, stock, precio, proveedor_id, codigo_barras) VALUES (%s,%s,%s,%s,%s)",
-            (nombre, stock, precio, proveedor_id, codigo)
-        )
-        mysql.connection.commit()
+        try:
+            # La foto se sube antes de escribir en la BD para no dejar un
+            # producto a medio insertar si Drive tarda y la conexion cae.
+            foto_drive = subir_foto_drive(request.files.get("foto"), "producto", "nuevo", nombre)
+            reconectar_mysql_si_hace_falta()
+
+            codigo = generar_codigo_barra("PROD")
+
+            cursor.execute(
+                "INSERT INTO productos (nombre, stock, precio, proveedor_id, codigo_barras) VALUES (%s,%s,%s,%s,%s)",
+                (nombre, stock, precio, proveedor_id, codigo)
+            )
+            producto_id = cursor.lastrowid
+
+            if foto_drive:
+                cursor.execute("""
+                    UPDATE productos
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    foto_drive["foto_drive_id"],
+                    foto_drive["foto_drive_nombre"],
+                    foto_drive["foto_mime_type"],
+                    foto_drive["foto_drive_web_view_url"],
+                    producto_id
+                ))
+
+            mysql.connection.commit()
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
+            mysql.connection.rollback()
+            flash(str(error))
 
     rellenar_codigos_barras_faltantes("productos")
     cursor.execute("""
@@ -1333,17 +1453,66 @@ def editar_producto(id):
         if not codigo:
             codigo = generar_codigo_barra("PROD")
 
-        cursor.execute("""
-            UPDATE productos
-            SET nombre=%s,
-                precio=%s,
-                stock=%s,
-                proveedor_id=%s,
-                codigo_barras=%s
-            WHERE id=%s
-        """, (nombre, precio, stock, proveedor_id, codigo, id))
+        foto_archivo = request.files.get("foto")
+        reemplaza_foto = foto_archivo and foto_archivo.filename
+        quitar_foto = request.form.get("quitar_foto") == "1" and not reemplaza_foto
+        nueva_foto_drive = None
 
-        mysql.connection.commit()
+        try:
+            if reemplaza_foto:
+                nueva_foto_drive = subir_foto_drive(foto_archivo, "producto", id, nombre)
+                reconectar_mysql_si_hace_falta()
+
+            cursor.execute("""
+                UPDATE productos
+                SET nombre=%s,
+                    precio=%s,
+                    stock=%s,
+                    proveedor_id=%s,
+                    codigo_barras=%s
+                WHERE id=%s
+            """, (nombre, precio, stock, proveedor_id, codigo, id))
+
+            if nueva_foto_drive:
+                cursor.execute("""
+                    UPDATE productos
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    nueva_foto_drive["foto_drive_id"],
+                    nueva_foto_drive["foto_drive_nombre"],
+                    nueva_foto_drive["foto_mime_type"],
+                    nueva_foto_drive["foto_drive_web_view_url"],
+                    id
+                ))
+            elif quitar_foto:
+                cursor.execute("""
+                    UPDATE productos
+                    SET foto_drive_id=NULL,
+                        foto_drive_nombre=NULL,
+                        foto_mime_type=NULL,
+                        foto_drive_web_view_url=NULL,
+                        foto_actualizada=NULL
+                    WHERE id=%s
+                """, (id,))
+
+            mysql.connection.commit()
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
+            mysql.connection.rollback()
+            if nueva_foto_drive:
+                eliminar_foto_drive_silencioso(nueva_foto_drive["foto_drive_id"])
+            flash(str(error))
+            cursor.close()
+            return redirect(url_for("editar_producto", id=id))
+
+        if nueva_foto_drive or quitar_foto:
+            eliminar_foto_drive_silencioso(producto.get("foto_drive_id"))
+
+        cursor.close()
         flash("Producto actualizado correctamente")
         return redirect(url_for("productos"))
 
@@ -1500,6 +1669,61 @@ def etiqueta_producto(id):
                            nombre=producto["nombre"],
                            precio=producto["precio"],
                            codigo_barras=producto["codigo_barras"])
+
+
+# ETIQUETA PNG DE UN SOLO PRODUCTO (IMPRESORA TERMICA BLUETOOTH)
+# -------------------
+@app.route("/etiqueta_producto/<int:id>/png")
+@login_required
+@rol_requerido(["admin"])
+def etiqueta_producto_png(id):
+
+    codigo = asegurar_codigo_barra_actual("productos", id)
+
+    if not codigo:
+        flash("Producto no encontrado")
+        return redirect(url_for("productos"))
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT nombre, precio, codigo_barras FROM productos WHERE id=%s", (id,))
+    producto = cursor.fetchone()
+    cursor.close()
+
+    imagen = generar_etiqueta_png(producto["nombre"], producto["precio"], producto["codigo_barras"])
+
+    return send_file(
+        imagen,
+        mimetype="image/png",
+        download_name=f"etiqueta_producto_{id}.png"
+    )
+
+
+@app.route("/producto/<int:id>/foto")
+@login_required
+def foto_producto(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("""
+        SELECT foto_drive_id, foto_drive_nombre, foto_mime_type
+        FROM productos
+        WHERE id=%s
+    """, (id,))
+    producto = cursor.fetchone()
+    cursor.close()
+
+    if not producto or not producto.get("foto_drive_id"):
+        abort(404)
+
+    try:
+        archivo = descargar_foto_drive(producto["foto_drive_id"])
+    except RuntimeError:
+        abort(404)
+
+    return send_file(
+        archivo,
+        mimetype=producto.get("foto_mime_type") or "image/jpeg",
+        download_name=producto.get("foto_drive_nombre") or f"producto-{id}.jpg",
+        max_age=3600
+    )
 
 # -------------------
 # CITAS
@@ -1774,7 +1998,9 @@ def convertir_cita(id):
 
             cursor.execute(f"""
                 SELECT c.id,
+                       c.mascota_id,
                        c.servicio_id,
+                       m.nombre AS mascota,
                        s.nombre AS servicio,
                        s.precio
                 FROM citas c
@@ -1788,18 +2014,19 @@ def convertir_cita(id):
             """, params)
             citas_mismo_dueno = cursor.fetchall()
 
-            if citas_mismo_dueno:
-                ids_validados = [cita_relacionada["id"] for cita_relacionada in citas_mismo_dueno]
-                placeholders_validados = ", ".join(["%s"] * len(ids_validados))
-                cursor.execute(f"""
+            # Cada mascota conserva su propio tiempo/observaciones: no se
+            # reutilizan los de la cita principal para no mezclar datos.
+            for cita_relacionada in citas_mismo_dueno:
+                cid = cita_relacionada["id"]
+                obs_relacionada = request.form.get(f"observaciones_{cid}")
+                tiempo_relacionado = request.form.get(f"tiempo_servicio_min_{cid}") or None
+                cursor.execute("""
                     UPDATE citas
                     SET estado='Completada',
-                        observaciones=CASE
-                            WHEN observaciones IS NULL OR observaciones = '' THEN %s
-                            ELSE observaciones
-                        END
-                    WHERE id IN ({placeholders_validados})
-                """, (observaciones, *ids_validados))
+                        observaciones=%s,
+                        tiempo_servicio_min=%s
+                    WHERE id=%s
+                """, (obs_relacionada, tiempo_relacionado, cid))
 
         mysql.connection.commit()
 
@@ -1817,6 +2044,8 @@ def convertir_cita(id):
                 "precio": float(cita["precio"] or 0),
                 "cantidad": 1,
                 "subtotal": float(cita["precio"] or 0),
+                "mascota_id": cita["mascota_id"],
+                "mascota_nombre": cita["mascota"],
             })
 
         for cita_relacionada in citas_mismo_dueno:
@@ -1828,6 +2057,8 @@ def convertir_cita(id):
                     "precio": float(cita_relacionada["precio"] or 0),
                     "cantidad": 1,
                     "subtotal": float(cita_relacionada["precio"] or 0),
+                    "mascota_id": cita_relacionada["mascota_id"],
+                    "mascota_nombre": cita_relacionada["mascota"],
                 })
 
         session.modified = True
@@ -2014,19 +2245,22 @@ def ventas():
 
         for item in carrito:
 
+            item_mascota_id = item.get("mascota_id") or mascota_id or None
+
             if item["tipo"] == "producto":
 
                 cursor.execute("""
                     INSERT INTO detalle_venta
-                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                    VALUES (%s, %s, %s, NULL, %s, %s, %s)
+                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal, mascota_id)
+                    VALUES (%s, %s, %s, NULL, %s, %s, %s, %s)
                 """, (
                     venta_id,
                     "producto",
                     item["id"],
                     item["cantidad"],
                     item["precio"],
-                    item["subtotal"]
+                    item["subtotal"],
+                    item_mascota_id
                 ))
 
                 cursor.execute("""
@@ -2039,15 +2273,16 @@ def ventas():
 
                 cursor.execute("""
                     INSERT INTO detalle_venta
-                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal)
-                    VALUES (%s, %s, NULL, %s, %s, %s, %s)
+                    (venta_id, tipo, producto_id, servicio_id, cantidad, precio_unitario, subtotal, mascota_id)
+                    VALUES (%s, %s, NULL, %s, %s, %s, %s, %s)
                 """, (
                     venta_id,
                     "servicio",
                     item["id"],
                     item["cantidad"],
                     item["precio"],
-                    item["subtotal"]
+                    item["subtotal"],
+                    item_mascota_id
                 ))
 
         mysql.connection.commit()
@@ -2896,15 +3131,45 @@ def insumos():
         stock = request.form["stock"]
         costo = request.form["costo"]
         proveedor_id = request.form.get("proveedor_id") or None
-        codigo = generar_codigo_barra("INS")
 
-        cursor.execute("""
-            INSERT INTO insumos (nombre, stock, costo, proveedor_id, codigo_barras)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (nombre, stock, costo, proveedor_id, codigo))
+        try:
+            # La foto se sube antes de escribir en la BD para no dejar un
+            # insumo a medio insertar si Drive tarda y la conexion cae.
+            foto_drive = subir_foto_drive(request.files.get("foto"), "insumo", "nuevo", nombre)
+            reconectar_mysql_si_hace_falta()
 
-        mysql.connection.commit()
-        flash("Insumo agregado")
+            codigo = generar_codigo_barra("INS")
+
+            cursor.execute("""
+                INSERT INTO insumos (nombre, stock, costo, proveedor_id, codigo_barras)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (nombre, stock, costo, proveedor_id, codigo))
+            insumo_id = cursor.lastrowid
+
+            if foto_drive:
+                cursor.execute("""
+                    UPDATE insumos
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    foto_drive["foto_drive_id"],
+                    foto_drive["foto_drive_nombre"],
+                    foto_drive["foto_mime_type"],
+                    foto_drive["foto_drive_web_view_url"],
+                    insumo_id
+                ))
+
+            mysql.connection.commit()
+            flash("Insumo agregado")
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
+            mysql.connection.rollback()
+            flash(str(error))
+
+        cursor.close()
         return redirect(url_for("insumos"))
 
     rellenar_codigos_barras_faltantes("insumos")
@@ -2948,17 +3213,66 @@ def editar_insumo(id):
         if not codigo:
             codigo = generar_codigo_barra("INS")
 
-        cursor.execute("""
-            UPDATE insumos
-            SET nombre=%s,
-                stock=%s,
-                costo=%s,
-                proveedor_id=%s,
-                codigo_barras=%s
-            WHERE id=%s
-        """, (nombre, stock, costo, proveedor_id, codigo, id))
+        foto_archivo = request.files.get("foto")
+        reemplaza_foto = foto_archivo and foto_archivo.filename
+        quitar_foto = request.form.get("quitar_foto") == "1" and not reemplaza_foto
+        nueva_foto_drive = None
 
-        mysql.connection.commit()
+        try:
+            if reemplaza_foto:
+                nueva_foto_drive = subir_foto_drive(foto_archivo, "insumo", id, nombre)
+                reconectar_mysql_si_hace_falta()
+
+            cursor.execute("""
+                UPDATE insumos
+                SET nombre=%s,
+                    stock=%s,
+                    costo=%s,
+                    proveedor_id=%s,
+                    codigo_barras=%s
+                WHERE id=%s
+            """, (nombre, stock, costo, proveedor_id, codigo, id))
+
+            if nueva_foto_drive:
+                cursor.execute("""
+                    UPDATE insumos
+                    SET foto_drive_id=%s,
+                        foto_drive_nombre=%s,
+                        foto_mime_type=%s,
+                        foto_drive_web_view_url=%s,
+                        foto_actualizada=NOW()
+                    WHERE id=%s
+                """, (
+                    nueva_foto_drive["foto_drive_id"],
+                    nueva_foto_drive["foto_drive_nombre"],
+                    nueva_foto_drive["foto_mime_type"],
+                    nueva_foto_drive["foto_drive_web_view_url"],
+                    id
+                ))
+            elif quitar_foto:
+                cursor.execute("""
+                    UPDATE insumos
+                    SET foto_drive_id=NULL,
+                        foto_drive_nombre=NULL,
+                        foto_mime_type=NULL,
+                        foto_drive_web_view_url=NULL,
+                        foto_actualizada=NULL
+                    WHERE id=%s
+                """, (id,))
+
+            mysql.connection.commit()
+        except (ValueError, RuntimeError, MySQLdb.OperationalError) as error:
+            mysql.connection.rollback()
+            if nueva_foto_drive:
+                eliminar_foto_drive_silencioso(nueva_foto_drive["foto_drive_id"])
+            flash(str(error))
+            cursor.close()
+            return redirect(url_for("editar_insumo", id=id))
+
+        if nueva_foto_drive or quitar_foto:
+            eliminar_foto_drive_silencioso(insumo.get("foto_drive_id"))
+
+        cursor.close()
         flash("Insumo actualizado correctamente")
         return redirect(url_for("insumos"))
 
@@ -2975,13 +3289,26 @@ def editar_insumo(id):
 @rol_requerido(["admin"])
 def eliminar_insumo(id):
 
-    cursor = mysql.connection.cursor()
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    cursor.execute("SELECT foto_drive_id FROM insumos WHERE id=%s", (id,))
+    insumo = cursor.fetchone()
 
     cursor.execute("DELETE FROM insumos WHERE id=%s", (id,))
     mysql.connection.commit()
     cursor.close()
 
-    flash("Insumo eliminado correctamente")
+    foto_error = False
+    if insumo and insumo.get("foto_drive_id"):
+        try:
+            eliminar_foto_drive(insumo["foto_drive_id"])
+        except RuntimeError:
+            foto_error = True
+
+    if foto_error:
+        flash("Insumo eliminado, pero no se pudo borrar su foto de Drive")
+    else:
+        flash("Insumo eliminado correctamente")
     return redirect(url_for("insumos"))
 
 # EXPORTAR INSUMOS A EXCEL
@@ -3120,6 +3447,61 @@ def etiqueta_insumo(id):
                            nombre=insumo["nombre"],
                            precio=insumo["costo"],
                            codigo_barras=insumo["codigo_barras"])
+
+
+# ETIQUETA PNG DE UN SOLO INSUMO (IMPRESORA TERMICA BLUETOOTH)
+# -------------------
+@app.route("/etiqueta_insumo/<int:id>/png")
+@login_required
+@rol_requerido(["admin"])
+def etiqueta_insumo_png(id):
+
+    codigo = asegurar_codigo_barra_actual("insumos", id)
+
+    if not codigo:
+        flash("Insumo no encontrado")
+        return redirect(url_for("insumos"))
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("SELECT nombre, costo, codigo_barras FROM insumos WHERE id=%s", (id,))
+    insumo = cursor.fetchone()
+    cursor.close()
+
+    imagen = generar_etiqueta_png(insumo["nombre"], insumo["costo"], insumo["codigo_barras"])
+
+    return send_file(
+        imagen,
+        mimetype="image/png",
+        download_name=f"etiqueta_insumo_{id}.png"
+    )
+
+
+@app.route("/insumo/<int:id>/foto")
+@login_required
+def foto_insumo(id):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("""
+        SELECT foto_drive_id, foto_drive_nombre, foto_mime_type
+        FROM insumos
+        WHERE id=%s
+    """, (id,))
+    insumo = cursor.fetchone()
+    cursor.close()
+
+    if not insumo or not insumo.get("foto_drive_id"):
+        abort(404)
+
+    try:
+        archivo = descargar_foto_drive(insumo["foto_drive_id"])
+    except RuntimeError:
+        abort(404)
+
+    return send_file(
+        archivo,
+        mimetype=insumo.get("foto_mime_type") or "image/jpeg",
+        download_name=insumo.get("foto_drive_nombre") or f"insumo-{id}.jpg",
+        max_age=3600
+    )
 
 # -------------------
 # PROVEEDORES

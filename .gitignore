@@ -2,6 +2,8 @@ venv/
 __pycache__/
 *.pyc
 .env
+.vscode/
+tempCodeRunnerFile.py
 google-drive-credentials.json
 google-service-account.json
 service-account*.json
@@ -10,8 +12,9 @@ service-account*.json
 crm-lomitos-fotos-*.json
 hash_usuarios.py
 migracion_password_hash.sql
-siste234_Mi_querido_lomito.sql
+siste234_Mi_querido_lomito*.sql
 Ejecutar hash usuarios.txt
+ARCHIVOS EXE, IPA Y APK.txt
 
 # Imagenes de static/img no usadas por la app
 static/img/Logo con redes sin fondo.png
