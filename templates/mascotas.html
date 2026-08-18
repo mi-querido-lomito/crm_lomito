@@ -98,7 +98,8 @@
     <button class="btn btn-success">Agregar Mascota</button>
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
         <th>Foto</th>
@@ -112,6 +113,8 @@
         <th>Dueño</th>
         <th>Acciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for m in mascotas %}
     <tr>
         <td>{{ m.id }}</td>
@@ -158,6 +161,7 @@
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 <script>

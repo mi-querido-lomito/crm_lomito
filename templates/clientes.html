@@ -10,20 +10,25 @@
     <button class="btn btn-success">Agregar Cliente</button>
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
         <th>Nombre</th>
         <th>Teléfono</th>
         <th>Dirección o casa</th>
+        <th>Mascotas</th>
         <th>Acciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for c in clientes %}
     <tr>
         <td>{{ c.id }}</td>
         <td>{{ c.nombre }}</td>
         <td>{{ c.telefono }}</td>
         <td>{{ c.direccion }}</td>
+        <td>{{ c.mascotas_nombres or "Sin mascotas" }}</td>
         <td>
             <a href="{{ url_for('editar_cliente', id=c.id) }}"
                class="btn btn-sm btn-warning">
@@ -40,6 +45,7 @@
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 {% if session["rol"] == "admin" %}

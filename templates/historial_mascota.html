@@ -44,12 +44,15 @@
 </div>
 
 <h4>Tiempo promedio por servicio</h4>
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>Servicio</th>
         <th>Promedio</th>
         <th>Servicios realizados</th>
     </tr>
+    </thead>
+    <tbody>
     {% for p in promedios %}
     <tr>
         <td>{{ p.servicio or "Sin servicio" }}</td>
@@ -57,10 +60,12 @@
         <td>{{ p.total }}</td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 <h4>Ventas y servicios realizados</h4>
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>Venta</th>
         <th>Fecha</th>
@@ -69,6 +74,8 @@
         <th>Costo</th>
         <th>Subtotal</th>
     </tr>
+    </thead>
+    <tbody>
     {% for v in ventas %}
     <tr>
         <td>{{ v.venta_id }}</td>
@@ -79,10 +86,12 @@
         <td>${{ v.subtotal }}</td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 <h4>Citas y observaciones</h4>
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>Fecha</th>
         <th>Servicio</th>
@@ -90,6 +99,8 @@
         <th>Tiempo</th>
         <th>Observaciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for c in citas %}
     <tr>
         <td>{{ c.fecha }}</td>
@@ -99,6 +110,7 @@
         <td>{{ c.observaciones or c.notas or "" }}</td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 {% endblock %}

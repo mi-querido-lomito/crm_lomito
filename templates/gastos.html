@@ -14,13 +14,15 @@
 
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+<thead class="table-dark">
 <tr>
 <th>Concepto</th>
 <th>Monto</th>
 <th>Fecha</th>
 </tr>
-
+</thead>
+<tbody>
 {% for g in gastos %}
 <tr>
 <td>{{ g.concepto }}</td>
@@ -28,6 +30,7 @@
 <td>{{ g.fecha }}</td>
 </tr>
 {% endfor %}
+</tbody>
 </table>
 
 {% endblock %}

@@ -912,7 +912,14 @@ def clientes():
 
         return redirect(url_for("clientes"))
 
-    cursor.execute("SELECT * FROM clientes ORDER BY id DESC")
+    cursor.execute("""
+        SELECT clientes.*,
+               GROUP_CONCAT(mascotas.nombre ORDER BY mascotas.nombre SEPARATOR ', ') AS mascotas_nombres
+        FROM clientes
+        LEFT JOIN mascotas ON mascotas.cliente_id = clientes.id
+        GROUP BY clientes.id
+        ORDER BY clientes.id DESC
+    """)
     data = cursor.fetchall()
     cursor.close()
 

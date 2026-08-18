@@ -161,7 +161,8 @@
     <button class="btn btn-success">Agendar Cita</button>
 </form>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
         <th>Mascota</th>
@@ -171,6 +172,8 @@
         <th>Tiempo real</th>
         <th>Acciones</th>
     </tr>
+    </thead>
+    <tbody>
     {% for c in citas %}
     <tr>
         <td>{{ c.id }}</td>
@@ -198,6 +201,7 @@
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 <script>

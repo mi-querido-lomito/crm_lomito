@@ -41,7 +41,8 @@
     </a>
     {% endif %}
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
     <tr>
         <th>ID</th>
         <th>Foto</th>
@@ -52,7 +53,8 @@
         <th>Código</th>
         <th>Acciones</th>
     </tr>
-
+    </thead>
+    <tbody>
     {% for i in insumos %}
     <tr>
         <td>{{ i.id }}</td>
@@ -95,5 +97,6 @@
         </td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 {% endblock %}
