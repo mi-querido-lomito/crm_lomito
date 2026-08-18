@@ -6,14 +6,16 @@
 <p><strong>Fecha:</strong> {{ venta.fecha }}</p>
 <p><strong>Método Pago:</strong> {{ venta.metodo_pago }}</p>
 
-<table class="table table-bordered">
+<table class="table table-bordered table-striped">
+    <thead class="thead-verventa">
     <tr>
         <th>Tipo</th>
         <th>Nombre</th>
         <th>Cantidad</th>
         <th>Subtotal</th>
     </tr>
-
+    </thead>
+    <tbody>
     {% for d in detalles %}
     <tr>
         <td>{{ d.tipo }}</td>
@@ -22,6 +24,7 @@
         <td>${{ d.subtotal }}</td>
     </tr>
     {% endfor %}
+    </tbody>
 </table>
 
 <h4>Total: ${{ venta.total }}</h4>
