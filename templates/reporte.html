@@ -125,7 +125,7 @@
     });
 
     const searchableRows = rows.map(function(row) {
-        return { element: row, text: normalize(row.textContent) };
+        return { element: row, text: normalize(row.textContent), matchesSearch: true };
     });
 
     const noResultsRow = document.createElement("tr");
@@ -137,29 +137,164 @@
     noResultsRow.appendChild(noResultsCell);
     table.querySelector("tbody").appendChild(noResultsRow);
 
-    function updateStatus(visibleCount) {
-        if (searchInput.value.trim() === "") {
-            status.textContent = rows.length + " tickets en esta fecha.";
+    const PAGE_SIZE = 25;
+    let currentPage = 1;
+
+    const paginationNav = document.createElement("nav");
+    paginationNav.className = "table-pagination-wrapper mt-2 d-none";
+    paginationNav.setAttribute("aria-label", "Paginación de tickets");
+
+    const paginationList = document.createElement("ul");
+    paginationList.className = "pagination pagination-sm flex-wrap mb-0";
+    paginationNav.appendChild(paginationList);
+    table.parentNode.insertBefore(paginationNav, table.nextSibling);
+
+    function updateStatus(totalMatched, shown, start) {
+        const searching = searchInput.value.trim() !== "";
+
+        if (totalMatched === 0) {
+            status.textContent = searching
+                ? "0 de " + rows.length + " tickets encontrados."
+                : "0 tickets en esta fecha.";
             return;
         }
-        status.textContent = visibleCount + " de " + rows.length + " tickets encontrados.";
+
+        if (totalMatched <= PAGE_SIZE) {
+            status.textContent = searching
+                ? totalMatched + " de " + rows.length + " tickets encontrados."
+                : totalMatched + " tickets en esta fecha.";
+            return;
+        }
+
+        const rango = "Mostrando " + (start + 1) + "–" + (start + shown) + " de " + totalMatched;
+        status.textContent = searching
+            ? rango + " tickets encontrados (de " + rows.length + " en total)."
+            : rango + " tickets en esta fecha.";
+    }
+
+    function pageWindow(current, total) {
+        const delta = 2;
+        const range = [];
+
+        for (let i = Math.max(1, current - delta); i <= Math.min(total, current + delta); i += 1) {
+            range.push(i);
+        }
+
+        if (range[0] > 1) {
+            if (range[0] > 2) {
+                range.unshift("...");
+            }
+            range.unshift(1);
+        }
+
+        if (range[range.length - 1] < total) {
+            if (range[range.length - 1] < total - 1) {
+                range.push("...");
+            }
+            range.push(total);
+        }
+
+        return range;
+    }
+
+    function renderPagination(totalPages) {
+        paginationList.innerHTML = "";
+        paginationNav.classList.toggle("d-none", totalPages <= 1);
+
+        if (totalPages <= 1) {
+            return;
+        }
+
+        function addItem(label, page, disabled, active) {
+            const li = document.createElement("li");
+            li.className = "page-item" + (active ? " active" : "") + (disabled ? " disabled" : "");
+
+            const a = document.createElement("a");
+            a.className = "page-link";
+            a.href = "#";
+            a.textContent = label;
+
+            if (active) {
+                a.setAttribute("aria-current", "page");
+            }
+
+            a.addEventListener("click", function(event) {
+                event.preventDefault();
+
+                if (disabled || active) {
+                    return;
+                }
+
+                currentPage = page;
+                updateView();
+                table.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+
+            li.appendChild(a);
+            paginationList.appendChild(li);
+        }
+
+        addItem("«", currentPage - 1, currentPage === 1, false);
+
+        pageWindow(currentPage, totalPages).forEach(function(page) {
+            if (page === "...") {
+                const li = document.createElement("li");
+                li.className = "page-item disabled";
+
+                const span = document.createElement("span");
+                span.className = "page-link";
+                span.textContent = "…";
+
+                li.appendChild(span);
+                paginationList.appendChild(li);
+                return;
+            }
+
+            addItem(String(page), page, false, page === currentPage);
+        });
+
+        addItem("»", currentPage + 1, currentPage === totalPages, false);
+    }
+
+    function updateView() {
+        const matched = searchableRows.filter(function(row) {
+            return row.matchesSearch;
+        });
+
+        let totalPages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+
+        if (currentPage > totalPages) {
+            currentPage = totalPages;
+        }
+
+        if (currentPage < 1) {
+            currentPage = 1;
+        }
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pageRows = matched.slice(start, start + PAGE_SIZE);
+
+        searchableRows.forEach(function(row) {
+            row.element.classList.add("d-none");
+        });
+        pageRows.forEach(function(row) {
+            row.element.classList.remove("d-none");
+        });
+
+        noResultsRow.classList.toggle("d-none", !(rows.length > 0 && searchInput.value.trim() !== "" && matched.length === 0));
+        updateStatus(matched.length, pageRows.length, start);
+        renderPagination(totalPages);
     }
 
     function applyFilter() {
         const query = normalize(searchInput.value.trim());
-        let visibleCount = 0;
 
         searchableRows.forEach(function(row) {
-            const match = query === "" || row.text.includes(query);
-            row.element.classList.toggle("d-none", !match);
-
-            if (match) {
-                visibleCount += 1;
-            }
+            row.matchesSearch = query === "" || row.text.includes(query);
         });
 
-        noResultsRow.classList.toggle("d-none", !(rows.length > 0 && query !== "" && visibleCount === 0));
-        updateStatus(visibleCount);
+        currentPage = 1;
+        updateView();
     }
 
     let filterTimer = null;
@@ -174,7 +309,7 @@
         searchInput.focus();
     });
 
-    applyFilter();
+    updateView();
 })();
 </script>
 {% else %}
