@@ -43,9 +43,9 @@
         <tbody>
         {% for total in totales_pago %}
             <tr>
-                <td>{{ total.metodo_pago or "Sin especificar" }}</td>
-                <td>{{ total.ventas }}</td>
-                <td>${{ "%.2f"|format(total.total) }}</td>
+                <td data-label="Método">{{ total.metodo_pago or "Sin especificar" }}</td>
+                <td data-label="Ventas">{{ total.ventas }}</td>
+                <td data-label="Total">${{ "%.2f"|format(total.total) }}</td>
             </tr>
         {% else %}
             <tr>
@@ -83,13 +83,13 @@
     <tbody>
     {% for ticket in tickets %}
         <tr>
-            <td>#{{ ticket.id }}</td>
-            <td>{{ ticket.fecha }}</td>
-            <td>{{ ticket.cliente or "" }}</td>
-            <td>{{ ticket.mascota or "" }}</td>
-            <td>{{ ticket.metodo_pago or "" }}</td>
-            <td>${{ "%.2f"|format(ticket.total) }}</td>
-            <td>
+            <td data-label="Ticket">#{{ ticket.id }}</td>
+            <td data-label="Fecha">{{ ticket.fecha }}</td>
+            <td data-label="Cliente">{{ ticket.cliente or "" }}</td>
+            <td data-label="Mascota">{{ ticket.mascota or "" }}</td>
+            <td data-label="Método de pago">{{ ticket.metodo_pago or "" }}</td>
+            <td data-label="Total">${{ "%.2f"|format(ticket.total) }}</td>
+            <td data-label="Acciones" class="td-actions">
                 <a class="btn btn-sm btn-outline-primary"
                    href="{{ url_for('ticket_html_copia', venta_id=ticket.id, copia='negocio', siguiente='reporte', fecha=fecha_reporte) }}"
                    target="_blank">

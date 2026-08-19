@@ -60,8 +60,8 @@
     <tbody>
     {% for p in productos %}
     <tr>
-        <td>{{ p.id }}</td>
-        <td>
+        <td data-label="ID">{{ p.id }}</td>
+        <td data-label="Foto">
             {% if p.foto_drive_id %}
             <a href="{{ p.foto_drive_web_view_url or url_for('foto_producto', id=p.id) }}"
                target="_blank"
@@ -75,12 +75,12 @@
             <span class="text-muted">Sin foto</span>
             {% endif %}
         </td>
-        <td>{{ p.nombre }}</td>
-        <td>{{ p.stock }}</td>
-        <td>${{ p.precio }}</td>
-        <td>{{ p.proveedor_nombre or "" }}</td>
-        <td>{{ p.codigo_barras }}</td>
-        <td>{% if session["rol"] == "admin" %}
+        <td data-label="Nombre">{{ p.nombre }}</td>
+        <td data-label="Stock">{{ p.stock }}</td>
+        <td data-label="Precio">${{ p.precio }}</td>
+        <td data-label="Proveedor">{{ p.proveedor_nombre or "" }}</td>
+        <td data-label="Código de Barras">{{ p.codigo_barras }}</td>
+        <td data-label="Acciones" class="td-actions">{% if session["rol"] == "admin" %}
             <a href="{{ url_for('editar_producto', id=p.id) }}"
                class="btn btn-sm btn-warning">
                ✏ Editar

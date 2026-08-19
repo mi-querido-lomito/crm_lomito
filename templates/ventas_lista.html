@@ -22,18 +22,18 @@
     <tbody>
     {% for v in ventas %}
     <tr class="{% if v.estado == 'cancelada' %}table-danger{% endif %}">
-        <td>{{ v.id }}</td>
-        <td>{{ v.fecha }}</td>
-        <td>${{ v.total }}</td>
-        <td>{{ v.metodo_pago }}</td>
-        <td>
+        <td data-label="ID">{{ v.id }}</td>
+        <td data-label="Fecha">{{ v.fecha }}</td>
+        <td data-label="Total">${{ v.total }}</td>
+        <td data-label="Método Pago">{{ v.metodo_pago }}</td>
+        <td data-label="Estado">
             {% if v.estado == 'activa' %}
                 <span class="badge bg-success">Activa</span>
             {% else %}
                 <span class="badge bg-danger">Cancelada</span>
             {% endif %}
         </td>
-        <td>
+        <td data-label="Acciones" class="td-actions">
 
             <a href="{{ url_for('ver_venta', venta_id=v.id) }}"
                class="btn btn-sm btn-info">

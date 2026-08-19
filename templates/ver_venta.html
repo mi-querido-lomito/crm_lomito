@@ -18,10 +18,10 @@
     <tbody>
     {% for d in detalles %}
     <tr>
-        <td>{{ d.tipo }}</td>
-        <td>{{ d.nombre }}</td>
-        <td>{{ d.cantidad }}</td>
-        <td>${{ d.subtotal }}</td>
+        <td data-label="Tipo">{{ d.tipo }}</td>
+        <td data-label="Nombre">{{ d.nombre }}</td>
+        <td data-label="Cantidad">{{ d.cantidad }}</td>
+        <td data-label="Subtotal">${{ d.subtotal }}</td>
     </tr>
     {% endfor %}
     </tbody>

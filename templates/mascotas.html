@@ -117,8 +117,8 @@
     <tbody>
     {% for m in mascotas %}
     <tr>
-        <td>{{ m.id }}</td>
-        <td>
+        <td data-label="ID">{{ m.id }}</td>
+        <td data-label="Foto">
             {% if m.foto_drive_id %}
             <a href="{{ m.foto_drive_web_view_url or url_for('foto_mascota', id=m.id) }}"
                target="_blank"
@@ -132,15 +132,15 @@
             <span class="text-muted">Sin foto</span>
             {% endif %}
         </td>
-        <td>{{ m.nombre }}</td>
-        <td>{{ m.especie }}</td>
-        <td>{{ m.raza or "" }}</td>
-        <td>{{ m.edad or "" }}</td>
-        <td>{{ m.genero or "" }}</td>
-        <td>{{ m.talla or "" }}</td>
-        <td>{{ m.color or "" }}</td>
-        <td>{{ m.dueno }}</td>
-        <td>
+        <td data-label="Nombre">{{ m.nombre }}</td>
+        <td data-label="Especie">{{ m.especie }}</td>
+        <td data-label="Raza">{{ m.raza or "" }}</td>
+        <td data-label="Edad">{{ m.edad or "" }}</td>
+        <td data-label="Género">{{ m.genero or "" }}</td>
+        <td data-label="Talla">{{ m.talla or "" }}</td>
+        <td data-label="Color">{{ m.color or "" }}</td>
+        <td data-label="Dueño">{{ m.dueno }}</td>
+        <td data-label="Acciones" class="td-actions">
             <a href="{{ url_for('historial_mascota', id=m.id) }}"
                class="btn btn-sm btn-info">
                Historial

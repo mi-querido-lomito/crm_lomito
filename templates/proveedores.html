@@ -40,14 +40,14 @@
     <tbody>
     {% for proveedor in proveedores %}
     <tr>
-        <td>{{ proveedor.id }}</td>
-        <td>{{ proveedor.nombre }}</td>
-        <td>{{ proveedor.direccion_contacto or "" }}</td>
-        <td>{{ proveedor.telefono or "" }}</td>
-        <td>{{ proveedor.observaciones or "" }}</td>
-        <td>{{ proveedor.productos_count }}</td>
-        <td>{{ proveedor.insumos_count }}</td>
-        <td>
+        <td data-label="ID">{{ proveedor.id }}</td>
+        <td data-label="Nombre">{{ proveedor.nombre }}</td>
+        <td data-label="Dirección física o web">{{ proveedor.direccion_contacto or "" }}</td>
+        <td data-label="Teléfono">{{ proveedor.telefono or "" }}</td>
+        <td data-label="Observaciones">{{ proveedor.observaciones or "" }}</td>
+        <td data-label="Productos">{{ proveedor.productos_count }}</td>
+        <td data-label="Insumos">{{ proveedor.insumos_count }}</td>
+        <td data-label="Acciones" class="td-actions">
             <a href="{{ url_for('editar_proveedor', id=proveedor.id) }}"
                class="btn btn-sm btn-warning">
                Editar

@@ -1701,6 +1701,7 @@ def etiqueta_producto_png(id):
     return send_file(
         imagen,
         mimetype="image/png",
+        as_attachment=True,
         download_name=f"etiqueta_producto_{id}.png"
     )
 
@@ -3479,6 +3480,7 @@ def etiqueta_insumo_png(id):
     return send_file(
         imagen,
         mimetype="image/png",
+        as_attachment=True,
         download_name=f"etiqueta_insumo_{id}.png"
     )
 

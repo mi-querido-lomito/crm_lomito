@@ -57,8 +57,8 @@
     <tbody>
     {% for i in insumos %}
     <tr>
-        <td>{{ i.id }}</td>
-        <td>
+        <td data-label="ID">{{ i.id }}</td>
+        <td data-label="Foto">
             {% if i.foto_drive_id %}
             <a href="{{ i.foto_drive_web_view_url or url_for('foto_insumo', id=i.id) }}"
                target="_blank"
@@ -72,13 +72,13 @@
             <span class="text-muted">Sin foto</span>
             {% endif %}
         </td>
-        <td>{{ i.nombre }}</td>
-        <td>{{ i.stock }}</td>
-        <td>${{ i.costo }}</td>
-        <td>{{ i.proveedor_nombre or i.proveedor or "" }}</td>
-        <td>{{ i.codigo_barras }}</td>
+        <td data-label="Nombre">{{ i.nombre }}</td>
+        <td data-label="Stock">{{ i.stock }}</td>
+        <td data-label="Costo">${{ i.costo }}</td>
+        <td data-label="Proveedor">{{ i.proveedor_nombre or i.proveedor or "" }}</td>
+        <td data-label="Código">{{ i.codigo_barras }}</td>
 
-        <td>
+        <td data-label="Acciones" class="td-actions">
             <a href="{{ url_for('editar_insumo', id=i.id) }}"
                class="btn btn-sm btn-warning">
                ✏ Editar

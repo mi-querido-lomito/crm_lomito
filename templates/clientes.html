@@ -24,12 +24,12 @@
     <tbody>
     {% for c in clientes %}
     <tr>
-        <td>{{ c.id }}</td>
-        <td>{{ c.nombre }}</td>
-        <td>{{ c.telefono }}</td>
-        <td>{{ c.direccion }}</td>
-        <td>{{ c.mascotas_nombres or "Sin mascotas" }}</td>
-        <td>
+        <td data-label="ID">{{ c.id }}</td>
+        <td data-label="Nombre">{{ c.nombre }}</td>
+        <td data-label="Teléfono">{{ c.telefono }}</td>
+        <td data-label="Dirección o casa">{{ c.direccion }}</td>
+        <td data-label="Mascotas">{{ c.mascotas_nombres or "Sin mascotas" }}</td>
+        <td data-label="Acciones" class="td-actions">
             <a href="{{ url_for('editar_cliente', id=c.id) }}"
                class="btn btn-sm btn-warning">
                Editar

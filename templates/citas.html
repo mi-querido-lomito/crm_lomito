@@ -141,12 +141,24 @@
                placeholder="Dirección">
     </div>
 
-    <select name="servicio_id" id="servicio_id" class="form-control mb-2" required>
-        <option value="">Seleccionar servicio</option>
-        {% for s in servicios %}
-        <option value="{{ s.id }}">{{ s.nombre }} - ${{ s.precio }}</option>
-        {% endfor %}
-    </select>
+    <input type="hidden" name="servicio_id" id="servicio_id">
+
+    <div class="position-relative mb-2">
+        <input type="text"
+               id="servicioSearch"
+               class="form-control"
+               autocomplete="off"
+               placeholder="Buscar servicio por nombre">
+
+        <div id="servicioResults"
+             class="list-group position-absolute w-100 shadow-sm d-none"
+             style="z-index: 1050; max-height: 260px; overflow-y: auto;">
+        </div>
+    </div>
+
+    <div id="servicioSelected" class="form-text mb-2">
+        Selecciona un servicio para la cita.
+    </div>
 
     <input type="datetime-local" name="fecha" id="fecha_cita" class="form-control mb-2" required>
 
@@ -176,18 +188,19 @@
     <tbody>
     {% for c in citas %}
     <tr>
-        <td>{{ c.id }}</td>
-        <td>{{ c.mascota }}</td>
-        <td>{{ c.servicio or "Sin servicio" }}</td>
-        <td>{{ c.fecha }}</td>
-        <td>{{ c.estado }}</td>
-        <td>{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
-        <td>
+        <td data-label="ID">{{ c.id }}</td>
+        <td data-label="Mascota">{{ c.mascota }}</td>
+        <td data-label="Servicio">{{ c.servicio or "Sin servicio" }}</td>
+        <td data-label="Fecha">{{ c.fecha }}</td>
+        <td data-label="Estado">{{ c.estado }}</td>
+        <td data-label="Tiempo real">{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
+        <td data-label="Acciones" class="td-actions">
             <a href="{{ url_for('editar_cita', id=c.id) }}"
                 class="btn btn-sm btn-warning">
                 Editar
             </a>
-            
+
+            {% if c.estado == "Pendiente" %}
             <a href="{{ url_for('cancelar_cita', id=c.id) }}"
                 class="btn btn-sm btn-danger"
                 onclick="return confirm('¿Cancelar esta cita?')">
@@ -198,6 +211,7 @@
                 class="btn btn-sm btn-success">
                 Finalizar y cobrar
             </a>
+            {% endif %}
         </td>
     </tr>
     {% endfor %}
@@ -206,7 +220,6 @@
 
 <script>
 const fechaCita = document.getElementById("fecha_cita");
-const servicioCita = document.getElementById("servicio_id");
 const mascotaCita = document.getElementById("mascota_id");
 const agendaEstimacion = document.getElementById("agendaEstimacion");
 const citaForm = document.getElementById("citaForm");
@@ -226,6 +239,10 @@ const clienteSelected = document.getElementById("clienteSelected");
 const clienteNombre = document.getElementById("clienteNombre");
 const clienteTelefono = document.getElementById("clienteTelefono");
 const clienteDireccion = document.getElementById("clienteDireccion");
+const servicioId = document.getElementById("servicio_id");
+const servicioSearch = document.getElementById("servicioSearch");
+const servicioResults = document.getElementById("servicioResults");
+const servicioSelected = document.getElementById("servicioSelected");
 
 const mascotasCita = [
     {% for m in mascotas %}
@@ -252,6 +269,19 @@ const clientesCita = [
 ].map(function(cliente) {
     cliente.searchText = normalizeSearch(cliente.nombre + " " + cliente.telefono + " " + cliente.direccion);
     return cliente;
+});
+
+const serviciosCita = [
+    {% for s in servicios %}
+    {
+        id: {{ s.id }},
+        nombre: {{ s.nombre|tojson }},
+        precio: {{ (s.precio or 0)|tojson }}
+    },
+    {% endfor %}
+].map(function(servicio) {
+    servicio.searchText = normalizeSearch(servicio.nombre);
+    return servicio;
 });
 
 function normalizeSearch(value) {
@@ -316,6 +346,62 @@ function renderMascotaResults() {
     });
 
     mascotaResults.classList.remove("d-none");
+}
+
+function hideServicioResults() {
+    servicioResults.classList.add("d-none");
+}
+
+function selectServicio(servicio) {
+    servicioId.value = servicio.id;
+    servicioSearch.value = servicio.nombre + " - $" + servicio.precio;
+    servicioSelected.textContent = "Servicio seleccionado: " + servicio.nombre + " ($" + servicio.precio + ")";
+    servicioSelected.className = "form-text text-success mb-2";
+    hideServicioResults();
+    actualizarEstimacionAgenda();
+}
+
+function renderServicioResults() {
+    const query = normalizeSearch(servicioSearch.value.trim());
+    servicioId.value = "";
+    servicioSelected.textContent = "Selecciona un servicio para la cita.";
+    servicioSelected.className = "form-text mb-2";
+    servicioResults.innerHTML = "";
+    actualizarEstimacionAgenda();
+
+    if (query.length === 0) {
+        hideServicioResults();
+        return;
+    }
+
+    const matches = [];
+    for (let index = 0; index < serviciosCita.length && matches.length < 12; index += 1) {
+        if (serviciosCita[index].searchText.includes(query)) {
+            matches.push(serviciosCita[index]);
+        }
+    }
+
+    if (matches.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "list-group-item text-muted";
+        empty.textContent = "No se encontraron servicios.";
+        servicioResults.appendChild(empty);
+        servicioResults.classList.remove("d-none");
+        return;
+    }
+
+    matches.forEach(function(servicio) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "list-group-item list-group-item-action";
+        button.innerHTML = "<strong>" + servicio.nombre + "</strong><br><small>$" + servicio.precio + "</small>";
+        button.addEventListener("click", function() {
+            selectServicio(servicio);
+        });
+        servicioResults.appendChild(button);
+    });
+
+    servicioResults.classList.remove("d-none");
 }
 
 function clienteDetalle(cliente) {
@@ -434,7 +520,6 @@ async function actualizarEstimacionAgenda() {
 }
 
 fechaCita.addEventListener("change", actualizarEstimacionAgenda);
-servicioCita.addEventListener("change", actualizarEstimacionAgenda);
 mascotaCita.addEventListener("change", actualizarEstimacionAgenda);
 tipoMascotaExistente.addEventListener("change", actualizarTipoMascota);
 tipoMascotaNueva.addEventListener("change", actualizarTipoMascota);
@@ -442,6 +527,8 @@ mascotaSearch.addEventListener("input", renderMascotaResults);
 mascotaSearch.addEventListener("focus", renderMascotaResults);
 clienteSearch.addEventListener("input", renderClienteResults);
 clienteSearch.addEventListener("focus", renderClienteResults);
+servicioSearch.addEventListener("input", renderServicioResults);
+servicioSearch.addEventListener("focus", renderServicioResults);
 
 document.addEventListener("click", function(event) {
     if (!mascotaSearch.contains(event.target) && !mascotaResults.contains(event.target)) {
@@ -451,9 +538,21 @@ document.addEventListener("click", function(event) {
     if (!clienteSearch.contains(event.target) && !clienteResults.contains(event.target)) {
         hideClienteResults();
     }
+
+    if (!servicioSearch.contains(event.target) && !servicioResults.contains(event.target)) {
+        hideServicioResults();
+    }
 });
 
 citaForm.addEventListener("submit", function(event) {
+    if (!servicioId.value) {
+        event.preventDefault();
+        servicioSelected.textContent = "Elige un servicio de la lista antes de agendar.";
+        servicioSelected.className = "form-text text-danger mb-2";
+        servicioSearch.focus();
+        return;
+    }
+
     if (mascotaOpcion.value === "existente" && !mascotaCita.value) {
         event.preventDefault();
         mascotaSelected.textContent = "Elige una mascota de la lista antes de agendar.";

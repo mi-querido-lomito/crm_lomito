@@ -55,9 +55,9 @@
     <tbody>
     {% for p in promedios %}
     <tr>
-        <td>{{ p.servicio or "Sin servicio" }}</td>
-        <td>{{ "%.0f"|format(p.promedio_min) }} min</td>
-        <td>{{ p.total }}</td>
+        <td data-label="Servicio">{{ p.servicio or "Sin servicio" }}</td>
+        <td data-label="Promedio">{{ "%.0f"|format(p.promedio_min) }} min</td>
+        <td data-label="Servicios realizados">{{ p.total }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -78,12 +78,12 @@
     <tbody>
     {% for v in ventas %}
     <tr>
-        <td>{{ v.venta_id }}</td>
-        <td>{{ v.fecha }}</td>
-        <td>{{ v.servicio or v.producto }}</td>
-        <td>{{ v.cantidad }}</td>
-        <td>${{ v.precio_unitario }}</td>
-        <td>${{ v.subtotal }}</td>
+        <td data-label="Venta">{{ v.venta_id }}</td>
+        <td data-label="Fecha">{{ v.fecha }}</td>
+        <td data-label="Concepto">{{ v.servicio or v.producto }}</td>
+        <td data-label="Cantidad">{{ v.cantidad }}</td>
+        <td data-label="Costo">${{ v.precio_unitario }}</td>
+        <td data-label="Subtotal">${{ v.subtotal }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -103,11 +103,11 @@
     <tbody>
     {% for c in citas %}
     <tr>
-        <td>{{ c.fecha }}</td>
-        <td>{{ c.servicio or "Sin servicio" }}</td>
-        <td>{{ c.estado }}</td>
-        <td>{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
-        <td>{{ c.observaciones or c.notas or "" }}</td>
+        <td data-label="Fecha">{{ c.fecha }}</td>
+        <td data-label="Servicio">{{ c.servicio or "Sin servicio" }}</td>
+        <td data-label="Estado">{{ c.estado }}</td>
+        <td data-label="Tiempo">{% if c.tiempo_servicio_min %}{{ c.tiempo_servicio_min }} min{% endif %}</td>
+        <td data-label="Observaciones">{{ c.observaciones or c.notas or "" }}</td>
     </tr>
     {% endfor %}
     </tbody>

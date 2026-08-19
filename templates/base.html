@@ -31,6 +31,93 @@
             }
         }
 
+        /* Tablas -> tarjetas apiladas en pantallas angostas (celular/tablet
+           dentro de la app Android), para que cada registro se lea como una
+           ficha en vez de obligar a hacer scroll horizontal. */
+        @media (max-width: 767.98px) {
+            /* Tablas con encabezado (thead): se convierten en tarjetas,
+               una por fila, con el nombre de columna como etiqueta. */
+            table.table:has(thead) thead {
+                display: none;
+            }
+
+            table.table:has(thead),
+            table.table:has(thead) tbody {
+                display: block;
+                width: 100%;
+            }
+
+            table.table:has(thead) tr {
+                display: block;
+                width: 100%;
+                margin-bottom: 1rem;
+                border: 1px solid rgba(0, 0, 0, .125);
+                border-radius: .5rem;
+                overflow: hidden;
+            }
+
+            table.table:has(thead) tr.table-search-empty {
+                border: none;
+            }
+
+            table.table:has(thead) td {
+                display: flex;
+                width: 100%;
+                justify-content: space-between;
+                align-items: center;
+                gap: .75rem;
+                text-align: right;
+                padding: .6rem .85rem;
+                border-bottom: 1px solid rgba(0, 0, 0, .06);
+            }
+
+            table.table:has(thead) td:last-child {
+                border-bottom: none;
+            }
+
+            table.table:has(thead) td[data-label]::before {
+                content: attr(data-label);
+                font-weight: 600;
+                text-transform: uppercase;
+                font-size: .72rem;
+                letter-spacing: .03em;
+                color: var(--bs-secondary-color, #6c757d);
+                text-align: left;
+                margin-right: auto;
+            }
+
+            table.table:has(thead) td.td-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            table.table:has(thead) td.td-actions::before {
+                margin-bottom: .5rem;
+            }
+
+            table.table:has(thead) td.td-actions .btn {
+                width: 100%;
+                margin: .2rem 0;
+            }
+
+            /* Tablas sin thead: pares th/td por fila (ficha de datos),
+               solo se apilan verticalmente. */
+            table.table:not(:has(thead)) tr,
+            table.table:not(:has(thead)) th,
+            table.table:not(:has(thead)) td {
+                display: block;
+                width: 100%;
+            }
+
+            table.table:not(:has(thead)) tr {
+                margin-bottom: .35rem;
+            }
+
+            table.table:not(:has(thead)) th {
+                padding-bottom: .1rem;
+            }
+        }
+
         /* Colores distintos de encabezado por cada ventana, para
            distinguir de un vistazo a que seccion pertenece cada tabla.
            El renglon alterno (table-striped) se tine con el mismo color

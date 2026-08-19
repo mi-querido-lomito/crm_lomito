@@ -192,17 +192,17 @@ manualSearch.closest("form").addEventListener("submit", function(event) {
     <tbody>
     {% for item in carrito %}
     <tr>
-        <td>{{ loop.index }}</td>
-        <td>{{ item.tipo }}</td>
-        <td>{{ item.nombre }}</td>
-        <td>{{ item.cantidad }}</td>
-        <td>${{ "%.2f"|format(item.subtotal) }}</td>
-        <td>
+        <td data-label="#">{{ loop.index }}</td>
+        <td data-label="Tipo">{{ item.tipo }}</td>
+        <td data-label="Nombre">{{ item.nombre }}</td>
+        <td data-label="Cant.">{{ item.cantidad }}</td>
+        <td data-label="Subtotal">${{ "%.2f"|format(item.subtotal) }}</td>
+        <td data-label="Quitar" class="td-actions">
             <form method="POST">
                 <input type="hidden" name="index" value="{{ loop.index0 }}">
                 <button name="eliminar"
                         class="btn btn-sm btn-danger">
-                    ❌
+                    ❌ Quitar
                 </button>
             </form>
         </td>
