@@ -290,6 +290,53 @@
 </div>
 
 <script>
+/*
+ * Descarga de archivos (ej. etiquetas PNG) compatible con la app Android.
+ * El WebView de algunos equipos (comprobado en Android 5.0) no detecta
+ * correctamente las respuestas de descarga y las navega como si fueran una
+ * pagina normal. Por eso, dentro de la app se trae el archivo con
+ * XMLHttpRequest (la misma red que ya sirve para navegar) y se entrega a un
+ * puente nativo (window.AndroidFileSaver, inyectado solo dentro de la app
+ * Android) para que lo guarde. En un navegador normal (PC/celular sin la
+ * app), como ese puente no existe, se usa la navegacion normal del enlace,
+ * que ya descarga el archivo gracias a Content-Disposition: attachment.
+ */
+function mqlDescargarArchivo(url, fileName) {
+    if (window.AndroidFileSaver && typeof window.AndroidFileSaver.saveFromDataUrl === "function") {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.responseType = "blob";
+
+        xhr.onload = function() {
+            if (xhr.status < 200 || xhr.status >= 300) {
+                alert("No se pudo descargar el archivo (" + xhr.status + ").");
+                return;
+            }
+
+            var reader = new FileReader();
+            reader.onloadend = function() {
+                window.AndroidFileSaver.saveFromDataUrl(reader.result, fileName);
+            };
+            reader.onerror = function() {
+                alert("No se pudo leer el archivo descargado.");
+            };
+            reader.readAsDataURL(xhr.response);
+        };
+
+        xhr.onerror = function() {
+            alert("No se pudo descargar el archivo.");
+        };
+
+        xhr.send();
+        return false;
+    }
+
+    window.location.href = url;
+    return false;
+}
+</script>
+
+<script>
 document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll("table.table").forEach(function(table) {
         if (table.dataset.search === "false") {

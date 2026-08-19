@@ -85,6 +85,7 @@
             </a>
 
             <a href="{{ url_for('etiqueta_insumo_png', id=i.id) }}"
+               onclick="return mqlDescargarArchivo(this.href, 'etiqueta_insumo_{{ i.id }}.png');"
                class="btn btn-sm btn-outline-dark">
                🏷️ Etiqueta PNG
             </a>

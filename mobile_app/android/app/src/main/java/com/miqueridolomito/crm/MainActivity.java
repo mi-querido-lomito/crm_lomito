@@ -2,14 +2,20 @@ package com.miqueridolomito.crm;
 
 import android.Manifest;
 import android.app.DownloadManager;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
 import android.widget.Toast;
@@ -19,51 +25,48 @@ import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * El WebView de Capacitor no descarga archivos por si solo: cuando el
- * servidor responde con Content-Disposition: attachment (ej. las etiquetas
- * PNG), el WebView no sabe que hacer y se queda sin reaccionar o intenta
- * navegar/renderizar los bytes crudos. Este listener intercepta esa
- * respuesta y la entrega al DownloadManager de Android para que se
- * descargue como un archivo normal, sin salir de la pagina actual.
+ * El WebView de Capacitor no descarga archivos por si solo. En dispositivos
+ * modernos, cuando el servidor responde con Content-Disposition: attachment
+ * (ej. las etiquetas PNG), se puede interceptar con setDownloadListener() y
+ * mandarlo al DownloadManager del sistema. PERO en el motor WebView de
+ * ciertos equipos viejos (comprobado en una tablet con Android 5.0) esa
+ * deteccion simplemente no existe: el WebView navega igual hacia la
+ * respuesta binaria y trata de interpretarla como una pagina, sin llamar
+ * nunca a onDownloadStart(), sin importar el mimeType usado.
+ *
+ * Por eso el mecanismo principal es un puente JavaScript -> Java
+ * (AndroidFileSaver, ver saveFromDataUrl mas abajo): la propia pagina web
+ * descarga el archivo con XMLHttpRequest (la misma red que ya funciona para
+ * navegar normalmente) y entrega los bytes ya en memoria a este codigo
+ * nativo solo para guardarlos, sin depender de que el WebView decida
+ * correctamente "esto es una descarga". El DownloadListener se deja como
+ * respaldo por si algun enlace no pasa por el puente JS.
  */
 public class MainActivity extends BridgeActivity {
 
     private static final int STORAGE_PERMISSION_REQUEST = 9001;
 
-    private String pendingDownloadUrl;
-    private String pendingDownloadUserAgent;
-    private String pendingDownloadContentDisposition;
-    private String pendingDownloadMimeType;
+    private Runnable pendingPermissionAction;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        getBridge().getWebView().addJavascriptInterface(new WebAppFileSaver(), "AndroidFileSaver");
+
         getBridge().getWebView().setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition,
                                          String mimeType, long contentLength) {
-                boolean needsLegacyPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
-                        && ContextCompat.checkSelfPermission(MainActivity.this,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED;
-
-                if (needsLegacyPermission) {
-                    pendingDownloadUrl = url;
-                    pendingDownloadUserAgent = userAgent;
-                    pendingDownloadContentDisposition = contentDisposition;
-                    pendingDownloadMimeType = mimeType;
-
-                    ActivityCompat.requestPermissions(MainActivity.this,
-                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                            STORAGE_PERMISSION_REQUEST);
-                    return;
-                }
-
-                startDownload(url, userAgent, contentDisposition, mimeType);
+                runWithStoragePermissionIfNeeded(() -> startDownloadFromUrl(url, userAgent, contentDisposition, mimeType));
             }
         });
     }
@@ -78,28 +81,121 @@ public class MainActivity extends BridgeActivity {
 
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
 
-        if (granted && pendingDownloadUrl != null) {
-            startDownload(pendingDownloadUrl, pendingDownloadUserAgent,
-                    pendingDownloadContentDisposition, pendingDownloadMimeType);
-        } else {
+        if (granted && pendingPermissionAction != null) {
+            pendingPermissionAction.run();
+        } else if (!granted) {
             Toast.makeText(this,
                     "Se necesita permiso de almacenamiento para descargar el archivo",
                     Toast.LENGTH_LONG).show();
         }
 
-        pendingDownloadUrl = null;
-        pendingDownloadUserAgent = null;
-        pendingDownloadContentDisposition = null;
-        pendingDownloadMimeType = null;
+        pendingPermissionAction = null;
+    }
+
+    private void runWithStoragePermissionIfNeeded(Runnable action) {
+        boolean needsLegacyPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+                && ContextCompat.checkSelfPermission(this,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED;
+
+        if (needsLegacyPermission) {
+            pendingPermissionAction = action;
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    STORAGE_PERMISSION_REQUEST);
+            return;
+        }
+
+        action.run();
     }
 
     /**
-     * URLUtil.guessFileName() de Android es poco confiable cuando el header
-     * Content-Disposition trae tanto filename= como filename*=UTF-8''...
-     * (formato que Flask/Werkzeug genera por defecto): a menudo falla en
-     * extraer el nombre y cae a una extension generica segun el mimeType
-     * (.bin para application/octet-stream). Por eso se extrae el filename=
-     * manualmente en vez de depender de esa funcion.
+     * Puente expuesto a la pagina web. La pagina hace el fetch con
+     * XMLHttpRequest y llama a AndroidFileSaver.saveFromDataUrl(dataUrl,
+     * fileName) con el resultado en formato "data:<mime>;base64,<datos>".
+     */
+    private class WebAppFileSaver {
+        @JavascriptInterface
+        public void saveFromDataUrl(final String dataUrl, final String fileName) {
+            runOnUiThread(() -> runWithStoragePermissionIfNeeded(() -> saveDataUrl(dataUrl, fileName)));
+        }
+    }
+
+    private void saveDataUrl(String dataUrl, String fileName) {
+        try {
+            int commaIndex = dataUrl.indexOf(',');
+            if (!dataUrl.startsWith("data:") || commaIndex < 0) {
+                throw new IOException("Formato de datos invalido");
+            }
+
+            String meta = dataUrl.substring(5, commaIndex);
+            String mimeType = meta.contains(";") ? meta.substring(0, meta.indexOf(';')) : meta;
+            String base64Data = dataUrl.substring(commaIndex + 1);
+            byte[] bytes = Base64.decode(base64Data, Base64.DEFAULT);
+
+            saveBytes(bytes, fileName, resolveMimeType(fileName, mimeType));
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo guardar el archivo", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void saveBytes(byte[] bytes, String fileName, String mimeType) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                saveViaMediaStore(bytes, fileName, mimeType);
+            } else {
+                saveLegacy(bytes, fileName);
+            }
+            Toast.makeText(this, "Guardado en Descargas: " + fileName, Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo guardar el archivo", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void saveViaMediaStore(byte[] bytes, String fileName, String mimeType) throws IOException {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, mimeType);
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+        ContentResolver resolver = getContentResolver();
+        Uri item = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+        if (item == null) {
+            throw new IOException("No se pudo crear el archivo en Descargas");
+        }
+
+        try (OutputStream out = resolver.openOutputStream(item)) {
+            if (out == null) {
+                throw new IOException("No se pudo abrir el archivo para escritura");
+            }
+            out.write(bytes);
+        }
+
+        values.clear();
+        values.put(MediaStore.Downloads.IS_PENDING, 0);
+        resolver.update(item, values, null, null);
+    }
+
+    private void saveLegacy(byte[] bytes, String fileName) throws IOException {
+        File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+
+        if (!downloadsDir.exists()) {
+            downloadsDir.mkdirs();
+        }
+
+        File outFile = new File(downloadsDir, fileName);
+
+        try (FileOutputStream fos = new FileOutputStream(outFile)) {
+            fos.write(bytes);
+        }
+
+        MediaScannerConnection.scanFile(this, new String[]{outFile.getAbsolutePath()}, null, null);
+    }
+
+    /**
+     * Respaldo: si algun enlace dispara una descarga por navegacion normal
+     * del WebView (Content-Disposition: attachment) en vez de pasar por el
+     * puente JS, se maneja con el DownloadManager del sistema como antes.
      */
     private String extractFileName(String url, String contentDisposition, String mimeType) {
         if (contentDisposition != null) {
@@ -118,14 +214,6 @@ public class MainActivity extends BridgeActivity {
         return URLUtil.guessFileName(url, contentDisposition, mimeType);
     }
 
-    /**
-     * El servidor envia application/octet-stream a proposito (para forzar la
-     * descarga incluso en WebViews viejos que intentan renderizar tipos
-     * conocidos como image/png). Para que el archivo guardado se asocie
-     * correctamente con la app de Galeria/Fotos, se deduce el mimeType real
-     * a partir de la extension del archivo en vez de usar el que mando el
-     * servidor.
-     */
     private String resolveMimeType(String fileName, String fallbackMimeType) {
         int dotIndex = fileName.lastIndexOf('.');
 
@@ -141,7 +229,7 @@ public class MainActivity extends BridgeActivity {
         return fallbackMimeType;
     }
 
-    private void startDownload(String url, String userAgent, String contentDisposition, String mimeType) {
+    private void startDownloadFromUrl(String url, String userAgent, String contentDisposition, String mimeType) {
         try {
             String fileName = extractFileName(url, contentDisposition, mimeType);
             String resolvedMimeType = resolveMimeType(fileName, mimeType);
