@@ -1700,7 +1700,12 @@ def etiqueta_producto_png(id):
 
     return send_file(
         imagen,
-        mimetype="image/png",
+        # application/octet-stream (en vez de image/png): en WebViews de Android
+        # viejos (ej. Lollipop 5.0) el motor intenta renderizar image/png inline
+        # como si fuera la pagina en si, ignorando Content-Disposition:
+        # attachment, en vez de entregarlo al DownloadListener nativo. Un tipo
+        # generico fuerza a cualquier WebView a tratarlo como descarga.
+        mimetype="application/octet-stream",
         as_attachment=True,
         download_name=f"etiqueta_producto_{id}.png"
     )
@@ -3479,7 +3484,9 @@ def etiqueta_insumo_png(id):
 
     return send_file(
         imagen,
-        mimetype="image/png",
+        # Ver comentario equivalente en etiqueta_producto_png sobre por que
+        # se usa application/octet-stream en vez de image/png.
+        mimetype="application/octet-stream",
         as_attachment=True,
         download_name=f"etiqueta_insumo_{id}.png"
     )

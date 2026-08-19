@@ -45,4 +45,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Necesario en Android 9 (API 28) o anterior para que DownloadManager
+         pueda guardar archivos (ej. etiquetas PNG) en la carpeta publica de
+         Descargas. En Android 10+ esta operacion ya no requiere el permiso. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>
