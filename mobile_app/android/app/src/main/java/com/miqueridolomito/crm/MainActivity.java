@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
 import android.widget.Toast;
 
@@ -17,6 +18,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * El WebView de Capacitor no descarga archivos por si solo: cuando el
@@ -89,9 +93,58 @@ public class MainActivity extends BridgeActivity {
         pendingDownloadMimeType = null;
     }
 
+    /**
+     * URLUtil.guessFileName() de Android es poco confiable cuando el header
+     * Content-Disposition trae tanto filename= como filename*=UTF-8''...
+     * (formato que Flask/Werkzeug genera por defecto): a menudo falla en
+     * extraer el nombre y cae a una extension generica segun el mimeType
+     * (.bin para application/octet-stream). Por eso se extrae el filename=
+     * manualmente en vez de depender de esa funcion.
+     */
+    private String extractFileName(String url, String contentDisposition, String mimeType) {
+        if (contentDisposition != null) {
+            Matcher matcher = Pattern
+                    .compile("filename\\s*=\\s*\"?([^\";]+)\"?", Pattern.CASE_INSENSITIVE)
+                    .matcher(contentDisposition);
+
+            if (matcher.find()) {
+                String name = matcher.group(1).trim();
+                if (!name.isEmpty()) {
+                    return name;
+                }
+            }
+        }
+
+        return URLUtil.guessFileName(url, contentDisposition, mimeType);
+    }
+
+    /**
+     * El servidor envia application/octet-stream a proposito (para forzar la
+     * descarga incluso en WebViews viejos que intentan renderizar tipos
+     * conocidos como image/png). Para que el archivo guardado se asocie
+     * correctamente con la app de Galeria/Fotos, se deduce el mimeType real
+     * a partir de la extension del archivo en vez de usar el que mando el
+     * servidor.
+     */
+    private String resolveMimeType(String fileName, String fallbackMimeType) {
+        int dotIndex = fileName.lastIndexOf('.');
+
+        if (dotIndex >= 0 && dotIndex < fileName.length() - 1) {
+            String extension = fileName.substring(dotIndex + 1).toLowerCase();
+            String resolved = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+
+            if (resolved != null) {
+                return resolved;
+            }
+        }
+
+        return fallbackMimeType;
+    }
+
     private void startDownload(String url, String userAgent, String contentDisposition, String mimeType) {
         try {
-            String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+            String fileName = extractFileName(url, contentDisposition, mimeType);
+            String resolvedMimeType = resolveMimeType(fileName, mimeType);
             String cookies = CookieManager.getInstance().getCookie(url);
 
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
@@ -100,7 +153,7 @@ public class MainActivity extends BridgeActivity {
                 request.addRequestHeader("Cookie", cookies);
             }
             request.addRequestHeader("User-Agent", userAgent);
-            request.setMimeType(mimeType);
+            request.setMimeType(resolvedMimeType);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
             request.allowScanningByMediaScanner();
