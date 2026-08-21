@@ -36,7 +36,7 @@ def actualizar_citas_perdidas():
         UPDATE citas
         SET estado='Cancelada'
         WHERE estado='Pendiente'
-        AND fecha < NOW()
+        AND fecha < DATE_SUB(NOW(), INTERVAL 2 DAY)
     """)
     mysql.connection.commit()
     cursor.close()
