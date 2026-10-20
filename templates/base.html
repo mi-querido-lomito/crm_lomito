@@ -263,6 +263,11 @@
                    href="{{ url_for('reporte_diario') }}">
                    📊 Reporte
                 </a>
+
+                <a class="btn btn-sm btn-outline-warning"
+                   href="{{ url_for('auditoria_duplicados') }}">
+                   🔎 Auditoría
+                </a>
                 {% endif %}
 
                 {% if session["rol"] == "admin" %}

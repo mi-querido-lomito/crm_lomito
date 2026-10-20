@@ -19,7 +19,9 @@ import io
 import json
 import os
 import textwrap
+import unicodedata
 import uuid
+from collections import defaultdict
 from flask import send_file
 from flask import session
 import csv
@@ -506,6 +508,7 @@ def asegurar_schema_crm():
     columnas = {
         "clientes": {
             "direccion": "TEXT NULL",
+            "email": "VARCHAR(100) NULL",
         },
         "productos": {
             "proveedor_id": "INT NULL",
@@ -569,6 +572,543 @@ def asegurar_schema_crm():
 
     mysql.connection.commit()
     cursor.close()
+
+
+def normalizar_valor_duplicado(valor):
+    """Normaliza solo diferencias de captura que no cambian un dato.
+
+    La detección no usa coincidencias parciales: dos registros solo se
+    agrupan si todos sus datos de negocio coinciden después de ignorar
+    mayúsculas, acentos y espacios repetidos.
+    """
+    # ``NULL`` y una cadena vacía son valores distintos en la base. No se
+    # deben equiparar: la auditoría solo omite diferencias de mayúsculas,
+    # acentos y espacios repetidos, no datos que podrían distinguir registros.
+    if valor is None:
+        return "\x00"
+
+    if isinstance(valor, datetime):
+        return valor.isoformat(sep=" ", timespec="seconds")
+
+    if isinstance(valor, time):
+        return valor.isoformat(timespec="seconds")
+
+    if hasattr(valor, "isoformat"):
+        return valor.isoformat()
+
+    texto = unicodedata.normalize("NFKD", str(valor))
+    texto = "".join(caracter for caracter in texto if not unicodedata.combining(caracter))
+    return " ".join(texto.casefold().split())
+
+
+def tiene_valor_duplicado(valor):
+    """Indica si un campo tiene contenido sin confundir NULL con vacío."""
+    return valor is not None and bool(str(valor).strip())
+
+
+def clave_cliente_duplicado(registro):
+    nombre = normalizar_valor_duplicado(registro.get("nombre"))
+    telefono = normalizar_valor_duplicado(registro.get("telefono"))
+    email = normalizar_valor_duplicado(registro.get("email"))
+    direccion = normalizar_valor_duplicado(registro.get("direccion"))
+
+    # Un nombre aislado no identifica de manera fiable a una persona.
+    if not tiene_valor_duplicado(registro.get("nombre")) or not (
+        tiene_valor_duplicado(registro.get("telefono"))
+        or tiene_valor_duplicado(registro.get("email"))
+        or tiene_valor_duplicado(registro.get("direccion"))
+    ):
+        return None
+
+    return nombre, telefono, email, direccion
+
+
+def agrupar_duplicados(registros, funcion_clave, funcion_resumen):
+    grupos = defaultdict(list)
+
+    for registro in registros:
+        clave = funcion_clave(registro)
+        if clave is not None:
+            grupos[clave].append(registro)
+
+    coincidencias = []
+    for registros_grupo in grupos.values():
+        if len(registros_grupo) < 2:
+            continue
+
+        registros_grupo.sort(key=lambda registro: registro["id"])
+        coincidencias.append({
+            "ids": [registro["id"] for registro in registros_grupo],
+            "registros": [
+                {"id": registro["id"], "resumen": funcion_resumen(registro)}
+                for registro in registros_grupo
+            ],
+        })
+
+    return coincidencias
+
+
+def obtener_reporte_duplicados(cursor):
+    """Obtiene solamente grupos de coincidencia exacta por entidad.
+
+    Los campos de existencias, códigos de barras, fotos e IDs se excluyen
+    deliberadamente porque son resultado del alta duplicada; los atributos que
+    describen el registro sí forman parte de cada clave.
+    """
+    reporte = []
+
+    cursor.execute("SELECT id, nombre, telefono, email, direccion FROM clientes")
+    clientes = cursor.fetchall()
+    reporte.append({
+        "codigo": "clientes",
+        "nombre": "Clientes",
+        "grupos": agrupar_duplicados(
+            clientes,
+            clave_cliente_duplicado,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Tel: {registro.get('telefono') or '—'} | "
+                f"Correo: {registro.get('email') or '—'} | "
+                f"Dirección: {registro.get('direccion') or '—'}"
+            )
+        )
+    })
+
+    cursor.execute("""
+        SELECT mascotas.*, clientes.nombre AS cliente_nombre,
+               clientes.telefono AS cliente_telefono,
+               clientes.email AS cliente_email,
+               clientes.direccion AS cliente_direccion
+        FROM mascotas
+        LEFT JOIN clientes ON mascotas.cliente_id=clientes.id
+    """)
+    mascotas = cursor.fetchall()
+
+    def clave_mascota(registro):
+        duenio = clave_cliente_duplicado({
+            "nombre": registro.get("cliente_nombre"),
+            "telefono": registro.get("cliente_telefono"),
+            "email": registro.get("cliente_email"),
+            "direccion": registro.get("cliente_direccion"),
+        })
+        if not duenio or not tiene_valor_duplicado(registro.get("nombre")):
+            return None
+
+        campos = (
+            "nombre", "especie", "raza", "edad", "fecha_especial", "alergias",
+            "genero", "talla", "color", "notas",
+        )
+        return duenio + tuple(normalizar_valor_duplicado(registro.get(campo)) for campo in campos)
+
+    reporte.append({
+        "codigo": "mascotas",
+        "nombre": "Mascotas",
+        "grupos": agrupar_duplicados(
+            mascotas,
+            clave_mascota,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Dueño: {registro.get('cliente_nombre') or 'Sin dueño'} | "
+                f"{registro.get('especie') or '—'} · {registro.get('raza') or 'Sin raza'}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM productos")
+    productos = cursor.fetchall()
+    reporte.append({
+        "codigo": "productos",
+        "nombre": "Productos",
+        "grupos": agrupar_duplicados(
+            productos,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("nombre")),
+                normalizar_valor_duplicado(registro.get("precio")),
+                normalizar_valor_duplicado(registro.get("costo")),
+                normalizar_valor_duplicado(registro.get("proveedor_id")),
+            ) if tiene_valor_duplicado(registro.get("nombre")) else None,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Precio: ${registro.get('precio') or 0} | Stock: {registro.get('stock') or 0}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM servicios")
+    servicios = cursor.fetchall()
+    reporte.append({
+        "codigo": "servicios",
+        "nombre": "Servicios",
+        "grupos": agrupar_duplicados(
+            servicios,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("nombre")),
+                normalizar_valor_duplicado(registro.get("precio")),
+                normalizar_valor_duplicado(registro.get("descripcion")),
+                normalizar_valor_duplicado(registro.get("duracion_min")),
+            ) if tiene_valor_duplicado(registro.get("nombre")) else None,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Precio: ${registro.get('precio') or 0} | "
+                f"{registro.get('descripcion') or 'Sin descripción'}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM insumos")
+    insumos = cursor.fetchall()
+    reporte.append({
+        "codigo": "insumos",
+        "nombre": "Insumos",
+        "grupos": agrupar_duplicados(
+            insumos,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("nombre")),
+                normalizar_valor_duplicado(registro.get("costo")),
+                normalizar_valor_duplicado(registro.get("proveedor_id")),
+                normalizar_valor_duplicado(registro.get("proveedor")),
+            ) if tiene_valor_duplicado(registro.get("nombre")) else None,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Costo: ${registro.get('costo') or 0} | Stock: {registro.get('stock') or 0}"
+            )
+        )
+    })
+
+    cursor.execute("""
+        SELECT citas.*, mascotas.nombre AS mascota_nombre, servicios.nombre AS servicio_nombre
+        FROM citas
+        LEFT JOIN mascotas ON citas.mascota_id=mascotas.id
+        LEFT JOIN servicios ON citas.servicio_id=servicios.id
+    """)
+    citas = cursor.fetchall()
+    reporte.append({
+        "codigo": "citas",
+        "nombre": "Citas",
+        "grupos": agrupar_duplicados(
+            citas,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("mascota_id")),
+                normalizar_valor_duplicado(registro.get("servicio_id")),
+                normalizar_valor_duplicado(registro.get("fecha")),
+                normalizar_valor_duplicado(registro.get("estado")),
+                normalizar_valor_duplicado(registro.get("notas")),
+                normalizar_valor_duplicado(registro.get("observaciones")),
+                normalizar_valor_duplicado(registro.get("tiempo_servicio_min")),
+            ) if registro.get("mascota_id") is not None else None,
+            lambda registro: (
+                f"{registro.get('mascota_nombre') or 'Sin mascota'} | "
+                f"{registro.get('servicio_nombre') or 'Sin servicio'} | "
+                f"{registro.get('fecha')} | {registro.get('estado')}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM proveedores")
+    proveedores = cursor.fetchall()
+    reporte.append({
+        "codigo": "proveedores",
+        "nombre": "Proveedores",
+        "grupos": agrupar_duplicados(
+            proveedores,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("nombre")),
+                normalizar_valor_duplicado(registro.get("direccion_contacto")),
+                normalizar_valor_duplicado(registro.get("telefono")),
+                normalizar_valor_duplicado(registro.get("observaciones")),
+            ) if tiene_valor_duplicado(registro.get("nombre")) and (
+                tiene_valor_duplicado(registro.get("direccion_contacto")) or
+                tiene_valor_duplicado(registro.get("telefono"))
+            ) else None,
+            lambda registro: (
+                f"{registro.get('nombre') or 'Sin nombre'} | "
+                f"Tel: {registro.get('telefono') or '—'} | "
+                f"{registro.get('direccion_contacto') or 'Sin dirección'}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM gastos_fijos")
+    gastos = cursor.fetchall()
+    reporte.append({
+        "codigo": "gastos",
+        "nombre": "Gastos",
+        "grupos": agrupar_duplicados(
+            gastos,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("concepto")),
+                normalizar_valor_duplicado(registro.get("monto")),
+                normalizar_valor_duplicado(registro.get("fecha")),
+                normalizar_valor_duplicado(registro.get("descripcion")),
+            ) if tiene_valor_duplicado(registro.get("concepto")) else None,
+            lambda registro: (
+                f"{registro.get('concepto') or 'Sin concepto'} | "
+                f"${registro.get('monto') or 0} | {registro.get('fecha')}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM entradas_inventario")
+    entradas = cursor.fetchall()
+    reporte.append({
+        "codigo": "entradas_inventario",
+        "nombre": "Entradas de inventario",
+        "grupos": agrupar_duplicados(
+            entradas,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("producto_id")),
+                normalizar_valor_duplicado(registro.get("cantidad")),
+                normalizar_valor_duplicado(registro.get("fecha")),
+            ) if registro.get("producto_id") is not None else None,
+            lambda registro: (
+                f"Producto #{registro.get('producto_id')} | "
+                f"Cantidad: {registro.get('cantidad')} | {registro.get('fecha')}"
+            )
+        )
+    })
+
+    cursor.execute("SELECT * FROM ventas")
+    ventas = cursor.fetchall()
+    cursor.execute("SELECT * FROM detalle_venta ORDER BY venta_id, id")
+    detalles_por_venta = defaultdict(list)
+    for detalle in cursor.fetchall():
+        detalles_por_venta[detalle["venta_id"]].append((
+            normalizar_valor_duplicado(detalle.get("tipo")),
+            normalizar_valor_duplicado(detalle.get("producto_id")),
+            normalizar_valor_duplicado(detalle.get("servicio_id")),
+            normalizar_valor_duplicado(detalle.get("mascota_id")),
+            normalizar_valor_duplicado(detalle.get("cantidad")),
+            normalizar_valor_duplicado(detalle.get("precio_unitario")),
+            normalizar_valor_duplicado(detalle.get("subtotal")),
+        ))
+
+    reporte.append({
+        "codigo": "ventas",
+        "nombre": "Ventas",
+        "grupos": agrupar_duplicados(
+            ventas,
+            lambda registro: (
+                normalizar_valor_duplicado(registro.get("fecha")),
+                normalizar_valor_duplicado(registro.get("total")),
+                normalizar_valor_duplicado(registro.get("metodo_pago")),
+                normalizar_valor_duplicado(registro.get("estado")),
+                normalizar_valor_duplicado(registro.get("cliente_id")),
+                normalizar_valor_duplicado(registro.get("mascota_id")),
+                normalizar_valor_duplicado(registro.get("cita_id")),
+                tuple(sorted(detalles_por_venta.get(registro["id"], []))),
+            ) if detalles_por_venta.get(registro["id"]) else None,
+            lambda registro: (
+                f"Venta #{registro['id']} | {registro.get('fecha')} | "
+                f"${registro.get('total') or 0} | {registro.get('metodo_pago') or 'Sin método'}"
+            )
+        )
+    })
+
+    return reporte
+
+
+def grupo_duplicado_valido(cursor, entidad, destino_id, origenes_ids):
+    for entidad_reporte in obtener_reporte_duplicados(cursor):
+        if entidad_reporte["codigo"] != entidad:
+            continue
+
+        for grupo in entidad_reporte["grupos"]:
+            ids_grupo = set(grupo["ids"])
+            if destino_id in ids_grupo and set(origenes_ids).issubset(ids_grupo - {destino_id}):
+                return True
+
+    return False
+
+
+def fotos_de_registros(cursor, tabla, origenes_ids):
+    if tabla not in {"mascotas", "productos", "insumos"}:
+        return []
+
+    placeholders = ", ".join(["%s"] * len(origenes_ids))
+    cursor.execute(
+        f"SELECT foto_drive_id FROM {tabla} WHERE id IN ({placeholders})",
+        tuple(origenes_ids)
+    )
+    return [registro["foto_drive_id"] for registro in cursor.fetchall() if registro.get("foto_drive_id")]
+
+
+def fusionar_registros_duplicados(cursor, entidad, destino_id, origenes_ids):
+    """Fusiona un grupo ya validado y devuelve un resumen y sus fotos."""
+    placeholders = ", ".join(["%s"] * len(origenes_ids))
+    fotos_origen = fotos_de_registros(cursor, entidad, origenes_ids)
+    resumen = []
+
+    if entidad == "clientes":
+        cursor.execute(f"UPDATE mascotas SET cliente_id=%s WHERE cliente_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} mascota(s) reasignada(s)")
+        cursor.execute(f"UPDATE ventas SET cliente_id=%s WHERE cliente_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} venta(s) reasignada(s)")
+        tabla = "clientes"
+    elif entidad == "mascotas":
+        cursor.execute(f"UPDATE citas SET mascota_id=%s WHERE mascota_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} cita(s) reasignada(s)")
+        cursor.execute(f"UPDATE ventas SET mascota_id=%s WHERE mascota_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} venta(s) reasignada(s)")
+        cursor.execute(f"UPDATE detalle_venta SET mascota_id=%s WHERE mascota_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} concepto(s) de venta reasignado(s)")
+        tabla = "mascotas"
+    elif entidad == "productos":
+        cursor.execute(f"SELECT COALESCE(SUM(stock), 0) AS total FROM productos WHERE id IN ({placeholders})", tuple(origenes_ids))
+        stock_origen = cursor.fetchone()["total"] or 0
+        cursor.execute(f"UPDATE detalle_venta SET producto_id=%s WHERE producto_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} concepto(s) de venta reasignado(s)")
+        cursor.execute(f"UPDATE entradas_inventario SET producto_id=%s WHERE producto_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} entrada(s) de inventario reasignada(s)")
+        cursor.execute("UPDATE productos SET stock=stock+%s WHERE id=%s", (stock_origen, destino_id))
+        tabla = "productos"
+    elif entidad == "servicios":
+        cursor.execute(f"UPDATE citas SET servicio_id=%s WHERE servicio_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} cita(s) reasignada(s)")
+        cursor.execute(f"UPDATE detalle_venta SET servicio_id=%s WHERE servicio_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} concepto(s) de venta reasignado(s)")
+        tabla = "servicios"
+    elif entidad == "insumos":
+        cursor.execute(f"SELECT COALESCE(SUM(stock), 0) AS total FROM insumos WHERE id IN ({placeholders})", tuple(origenes_ids))
+        stock_origen = cursor.fetchone()["total"] or 0
+        cursor.execute("UPDATE insumos SET stock=stock+%s WHERE id=%s", (stock_origen, destino_id))
+        tabla = "insumos"
+    elif entidad == "citas":
+        cursor.execute(f"UPDATE ventas SET cita_id=%s WHERE cita_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} venta(s) reasignada(s)")
+        tabla = "citas"
+    elif entidad == "proveedores":
+        cursor.execute(f"UPDATE productos SET proveedor_id=%s WHERE proveedor_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} producto(s) reasignado(s)")
+        cursor.execute(f"UPDATE insumos SET proveedor_id=%s WHERE proveedor_id IN ({placeholders})", (destino_id, *origenes_ids))
+        resumen.append(f"{cursor.rowcount} insumo(s) reasignado(s)")
+        tabla = "proveedores"
+    elif entidad == "gastos":
+        tabla = "gastos_fijos"
+    elif entidad == "entradas_inventario":
+        cursor.execute(f"SELECT producto_id, COALESCE(SUM(cantidad), 0) AS total FROM entradas_inventario WHERE id IN ({placeholders}) GROUP BY producto_id", tuple(origenes_ids))
+        for entrada in cursor.fetchall():
+            cursor.execute(
+                "UPDATE productos SET stock=stock-%s WHERE id=%s AND stock >= %s",
+                (entrada["total"], entrada["producto_id"], entrada["total"])
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("No se puede fusionar la entrada porque el stock actual no permite revertir el duplicado")
+        tabla = "entradas_inventario"
+    elif entidad == "ventas":
+        cursor.execute(f"SELECT id, estado FROM ventas WHERE id IN ({placeholders})", tuple(origenes_ids))
+        ventas_origen = cursor.fetchall()
+        for venta in ventas_origen:
+            if venta.get("estado") != "activa":
+                continue
+            cursor.execute("""
+                SELECT producto_id, SUM(cantidad) AS cantidad
+                FROM detalle_venta
+                WHERE venta_id=%s AND tipo='producto' AND producto_id IS NOT NULL
+                GROUP BY producto_id
+            """, (venta["id"],))
+            for detalle in cursor.fetchall():
+                cursor.execute(
+                    "UPDATE productos SET stock=stock+%s WHERE id=%s",
+                    (detalle["cantidad"], detalle["producto_id"])
+                )
+        cursor.execute(f"DELETE FROM detalle_venta WHERE venta_id IN ({placeholders})", tuple(origenes_ids))
+        resumen.append(f"{cursor.rowcount} concepto(s) de venta eliminado(s)")
+        tabla = "ventas"
+    else:
+        raise ValueError("Entidad no permitida para fusión")
+
+    cursor.execute(f"DELETE FROM {tabla} WHERE id IN ({placeholders})", tuple(origenes_ids))
+    resumen.append(f"{cursor.rowcount} registro(s) duplicado(s) eliminado(s)")
+    return resumen, fotos_origen
+
+
+def redireccionar_auditoria_duplicados():
+    return redirect(url_for("auditoria_duplicados"))
+
+
+def procesar_fusion_duplicados(entidad):
+    entidades_validas = {
+        "clientes", "mascotas", "productos", "servicios", "insumos", "citas",
+        "proveedores", "gastos", "entradas_inventario", "ventas",
+    }
+    if entidad not in entidades_validas:
+        abort(404)
+
+    try:
+        destino_id = int(request.form.get("destino_id", ""))
+        origenes_ids = sorted({
+            int(registro_id)
+            for registro_id in request.form.getlist("origenes_ids")
+        })
+    except (TypeError, ValueError):
+        flash("Selecciona el registro que se conservará y al menos un duplicado.")
+        return redireccionar_auditoria_duplicados()
+
+    origenes_ids = [registro_id for registro_id in origenes_ids if registro_id != destino_id]
+    if not origenes_ids:
+        flash("Selecciona al menos un registro distinto al que se conservará.")
+        return redireccionar_auditoria_duplicados()
+
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    fotos_origen = []
+    foto_destino = None
+
+    try:
+        if not grupo_duplicado_valido(cursor, entidad, destino_id, origenes_ids):
+            flash("La fusión fue rechazada: los registros ya no forman un grupo de coincidencia exacta.")
+            return redireccionar_auditoria_duplicados()
+
+        if entidad in {"mascotas", "productos", "insumos"}:
+            cursor.execute(f"SELECT foto_drive_id FROM {entidad} WHERE id=%s", (destino_id,))
+            destino = cursor.fetchone()
+            foto_destino = destino.get("foto_drive_id") if destino else None
+
+        resumen, fotos_origen = fusionar_registros_duplicados(
+            cursor, entidad, destino_id, origenes_ids
+        )
+        mysql.connection.commit()
+    except (MySQLdb.Error, ValueError):
+        mysql.connection.rollback()
+        app.logger.exception("No se pudieron fusionar registros duplicados de %s", entidad)
+        flash("No se pudieron fusionar los registros; no se realizó ningún cambio.")
+        return redireccionar_auditoria_duplicados()
+    finally:
+        cursor.close()
+
+    foto_error = False
+    for foto_drive_id in set(fotos_origen):
+        if foto_drive_id == foto_destino:
+            continue
+        try:
+            eliminar_foto_drive(foto_drive_id)
+        except RuntimeError:
+            foto_error = True
+
+    mensaje = (
+        f"Fusión de {entidad} completada. Se conservó el registro #{destino_id}; "
+        + ", ".join(resumen)
+    )
+    if foto_error:
+        mensaje += " Algunas fotos de registros eliminados no se pudieron borrar de Drive."
+    flash(mensaje)
+    return redireccionar_auditoria_duplicados()
+
+
+@app.get("/auditoria-duplicados")
+@login_required
+@rol_requerido(["admin"])
+def auditoria_duplicados():
+    """Muestra las coincidencias exactas antes de permitir una fusión."""
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        reporte_duplicados = obtener_reporte_duplicados(cursor)
+    finally:
+        cursor.close()
+
+    return render_template(
+        "auditoria_duplicados.html",
+        reporte_duplicados=reporte_duplicados,
+    )
 
 
 def estimar_tiempo_mascota(cursor, mascota_id):
@@ -1381,7 +1921,7 @@ def eliminar_mascota(id):
         cursor.close()
         flash(
             "No se eliminó la mascota porque tiene historial relacionado. "
-            "Usa ‘Fusionar registros duplicados’ para conservar sus citas y ventas."
+            "Usa la Auditoría de registros duplicados para conservar sus citas y ventas."
         )
         return redirect(url_for("mascotas"))
 
@@ -1407,98 +1947,16 @@ def eliminar_mascota(id):
 @login_required
 @rol_requerido(["admin"])
 def fusionar_mascotas():
-    """Conserva una mascota y transfiere a ella el historial de duplicados."""
-    try:
-        destino_id = int(request.form.get("mascota_destino", ""))
-        origenes_ids = sorted({
-            int(mascota_id)
-            for mascota_id in request.form.getlist("mascotas_origen")
-        })
-    except (TypeError, ValueError):
-        flash("Selecciona la mascota que se conservará y al menos un duplicado.")
-        return redirect(url_for("mascotas"))
+    # Compatibilidad con la URL anterior: la validación actual evita fusionar
+    # mascotas que solo se parecen, pero no pertenecen al mismo grupo exacto.
+    return procesar_fusion_duplicados("mascotas")
 
-    origenes_ids = [mascota_id for mascota_id in origenes_ids if mascota_id != destino_id]
-    if not origenes_ids:
-        flash("Selecciona uno o más registros distintos al que se conservará.")
-        return redirect(url_for("mascotas"))
 
-    placeholders = ", ".join(["%s"] * len(origenes_ids))
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    fotos_origen = []
-
-    try:
-        cursor.execute("SELECT id, foto_drive_id FROM mascotas WHERE id=%s", (destino_id,))
-        mascota_destino = cursor.fetchone()
-        if not mascota_destino:
-            flash("La mascota que se conservará ya no existe.")
-            return redirect(url_for("mascotas"))
-
-        cursor.execute(
-            f"SELECT id, foto_drive_id FROM mascotas WHERE id IN ({placeholders})",
-            tuple(origenes_ids)
-        )
-        mascotas_origen = cursor.fetchall()
-        if len(mascotas_origen) != len(origenes_ids):
-            flash("Una de las mascotas seleccionadas ya no existe.")
-            return redirect(url_for("mascotas"))
-
-        # Todas las actualizaciones y el borrado son una sola transaccion: si
-        # alguna referencia no puede trasladarse, no se elimina ningun registro.
-        cursor.execute(
-            f"UPDATE citas SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
-            (destino_id, *origenes_ids)
-        )
-        citas_actualizadas = cursor.rowcount
-
-        cursor.execute(
-            f"UPDATE ventas SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
-            (destino_id, *origenes_ids)
-        )
-        ventas_actualizadas = cursor.rowcount
-
-        cursor.execute(
-            f"UPDATE detalle_venta SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
-            (destino_id, *origenes_ids)
-        )
-        detalles_actualizados = cursor.rowcount
-
-        cursor.execute(
-            f"DELETE FROM mascotas WHERE id IN ({placeholders})",
-            tuple(origenes_ids)
-        )
-        mysql.connection.commit()
-
-        foto_destino_id = mascota_destino.get("foto_drive_id")
-        fotos_origen = [
-            mascota.get("foto_drive_id")
-            for mascota in mascotas_origen
-            if mascota.get("foto_drive_id") and mascota.get("foto_drive_id") != foto_destino_id
-        ]
-    except MySQLdb.Error:
-        mysql.connection.rollback()
-        app.logger.exception("No se pudieron fusionar las mascotas")
-        flash("No se pudieron fusionar los registros; no se hizo ningún cambio.")
-        return redirect(url_for("mascotas"))
-    finally:
-        cursor.close()
-
-    foto_error = False
-    for foto_drive_id in fotos_origen:
-        try:
-            eliminar_foto_drive(foto_drive_id)
-        except RuntimeError:
-            foto_error = True
-
-    mensaje = (
-        f"Se conservará la mascota #{destino_id}. Se fusionaron {len(origenes_ids)} "
-        f"duplicado(s): {citas_actualizadas} cita(s), {ventas_actualizadas} venta(s) "
-        f"y {detalles_actualizados} concepto(s) fueron transferidos."
-    )
-    if foto_error:
-        mensaje += " Algunas fotos de registros eliminados no se pudieron borrar de Drive."
-    flash(mensaje)
-    return redirect(url_for("mascotas"))
+@app.post("/fusionar_duplicados/<entidad>")
+@login_required
+@rol_requerido(["admin"])
+def fusionar_duplicados(entidad):
+    return procesar_fusion_duplicados(entidad)
 
 
 @app.route("/mascota/<int:id>/historial")
@@ -1946,9 +2404,23 @@ def citas():
         mascota_opcion = request.form.get("mascota_opcion", "existente")
         mascota_id = request.form.get("mascota_id")
         fecha = request.form["fecha"]
-        servicio_id = request.form.get("servicio_id") or None
+        servicio_id_raw = (request.form.get("servicio_id") or "").strip()
         notas = request.form.get("notas")
-        fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
+        try:
+            fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
+            servicio_id = int(servicio_id_raw)
+        except ValueError:
+            flash("Selecciona un servicio válido de la lista")
+            cursor.close()
+            return redirect(url_for("citas"))
+
+        # La validación del navegador mejora la experiencia, pero la API debe
+        # comprobar por sí misma que el servicio recibido existe.
+        cursor.execute("SELECT id FROM servicios WHERE id=%s", (servicio_id,))
+        if not cursor.fetchone():
+            flash("El servicio seleccionado ya no existe. Elige otro de la lista.")
+            cursor.close()
+            return redirect(url_for("citas"))
 
         if mascota_opcion == "nueva":
             mascota_nombre = (request.form.get("mascota_nombre") or "").strip()

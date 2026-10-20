@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Auditoría de registros duplicados</h2>
+
+<div class="alert alert-warning">
+    Se muestran exclusivamente coincidencias exactas: se comparan todos los datos de negocio de cada entidad, ignorando solo mayúsculas, acentos y espacios repetidos. Revisa el grupo y elige el registro que se conservará antes de fusionar.
+</div>
+
+{% for entidad in reporte_duplicados %}
+<details class="border rounded mb-2 p-2" {% if entidad.grupos %}open{% endif %}>
+    <summary class="fw-semibold">
+        {{ entidad.nombre }}
+        {% if entidad.grupos %}
+        <span class="badge text-bg-warning ms-1">{{ entidad.grupos|length }} grupo(s) exacto(s)</span>
+        {% else %}
+        <span class="badge text-bg-success ms-1">Sin duplicados</span>
+        {% endif %}
+    </summary>
+
+    {% if entidad.grupos %}
+        {% for grupo in entidad.grupos %}
+        <form method="POST"
+              action="{{ url_for('fusionar_duplicados', entidad=entidad.codigo) }}"
+              class="border rounded p-3 mt-3 bg-light"
+              onsubmit="return confirm('Se conservará el registro marcado y se fusionarán únicamente los duplicados seleccionados. ¿Deseas continuar?');">
+            <div class="fw-semibold mb-2">Coincidencia exacta {{ loop.index }}</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-2" data-search="false">
+                    <thead>
+                        <tr>
+                            <th>Conservar</th>
+                            <th>Fusionar</th>
+                            <th>ID</th>
+                            <th>Datos comparados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for registro in grupo.registros %}
+                    <tr>
+                        <td>
+                            <input class="form-check-input"
+                                   type="radio"
+                                   name="destino_id"
+                                   value="{{ registro.id }}"
+                                   {% if loop.first %}checked{% endif %}
+                                   aria-label="Conservar registro {{ registro.id }}">
+                        </td>
+                        <td>
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   name="origenes_ids"
+                                   value="{{ registro.id }}"
+                                   checked
+                                   aria-label="Fusionar registro {{ registro.id }}">
+                        </td>
+                        <td>#{{ registro.id }}</td>
+                        <td>{{ registro.resumen }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn btn-warning btn-sm">
+                Fusionar registros seleccionados
+            </button>
+        </form>
+        {% endfor %}
+    {% else %}
+    <p class="text-muted small mb-0 mt-2">No hay grupos con todos los datos iguales.</p>
+    {% endif %}
+</details>
+{% endfor %}
+
+{% endblock %}
