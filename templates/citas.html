@@ -201,11 +201,12 @@
             </a>
 
             {% if c.estado == "Pendiente" %}
-            <a href="{{ url_for('cancelar_cita', id=c.id) }}"
-                class="btn btn-sm btn-danger"
-                onclick="return confirm('¿Cancelar esta cita?')">
-                Cancelar
-            </a>
+            <form method="POST"
+                  action="{{ url_for('cancelar_cita', id=c.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Cancelar esta cita?')">
+                <button type="submit" class="btn btn-sm btn-danger">Cancelar</button>
+            </form>
 
             <a href="{{ url_for('convertir_cita', id=c.id) }}"
                 class="btn btn-sm btn-success">

@@ -164,10 +164,43 @@
 
         .thead-verventa { --bs-table-bg: #6c757d; --bs-table-color: #fff; }
         thead.thead-verventa ~ tbody > tr:nth-of-type(odd) > * { --bs-table-bg-type: rgba(108, 117, 125, .07); }
+
+        .mql-loading-overlay {
+            position: fixed;
+            z-index: 2000;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background: rgba(33, 37, 41, .62);
+        }
+
+        .mql-loading-overlay[hidden] {
+            display: none;
+        }
+
+        .mql-loading-card {
+            width: min(100%, 360px);
+            padding: 2rem;
+            border-radius: .75rem;
+            color: #fff;
+            text-align: center;
+            background: #212529;
+            box-shadow: 0 1rem 3rem rgba(0, 0, 0, .35);
+        }
     </style>
 </head>
 
 <body>
+
+<div id="mqlLoadingOverlay" class="mql-loading-overlay" hidden aria-live="assertive" aria-busy="true">
+    <div class="mql-loading-card" role="status">
+        <div class="spinner-border mb-3" aria-hidden="true"></div>
+        <div class="fw-semibold">Guardando cambios…</div>
+        <small class="d-block mt-2 text-white-50">No cierres ni actualices esta pantalla.</small>
+    </div>
+</div>
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
@@ -603,6 +636,99 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/*
+ * Cada formulario POST recibe un identificador unico y queda bloqueado al
+ * enviarse. El servidor almacena ese identificador de forma unica, por lo que
+ * un doble clic o un reintento de red no vuelve a crear el mismo registro.
+ */
+(function() {
+    var overlay = document.getElementById("mqlLoadingOverlay");
+
+    function nuevoIdentificador() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            return window.crypto.randomUUID();
+        }
+
+        // Compatibilidad con WebView Android antiguos que no tienen randomUUID.
+        if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+            var bytes = new Uint8Array(16);
+            window.crypto.getRandomValues(bytes);
+            bytes[6] = (bytes[6] & 15) | 64;
+            bytes[8] = (bytes[8] & 63) | 128;
+            var hex = Array.prototype.map.call(bytes, function(byte) {
+                return ("0" + byte.toString(16)).slice(-2);
+            }).join("");
+            return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" +
+                hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
+        }
+
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(character) {
+            var random = Math.floor(Math.random() * 16);
+            var value = character === "x" ? random : (random & 3) | 8;
+            return value.toString(16);
+        });
+    }
+
+    function ocultarCarga() {
+        if (overlay) {
+            overlay.hidden = true;
+        }
+
+        document.querySelectorAll("[data-mql-disabled='true']").forEach(function(control) {
+            control.disabled = false;
+            control.removeAttribute("data-mql-disabled");
+        });
+
+        document.querySelectorAll("form[data-mql-submitting='true']").forEach(function(form) {
+            delete form.dataset.mqlSubmitting;
+        });
+    }
+
+    document.addEventListener("submit", function(event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || event.defaultPrevented) {
+            return;
+        }
+
+        var method = (form.getAttribute("method") || "get").toLowerCase();
+        if (method !== "post") {
+            return;
+        }
+
+        if (form.dataset.mqlSubmitting === "true") {
+            event.preventDefault();
+            return;
+        }
+
+        form.dataset.mqlSubmitting = "true";
+
+        var submissionId = form.querySelector("input[name='_submission_id']");
+        if (!submissionId) {
+            submissionId = document.createElement("input");
+            submissionId.type = "hidden";
+            submissionId.name = "_submission_id";
+            form.appendChild(submissionId);
+        }
+        submissionId.value = nuevoIdentificador();
+
+        form.querySelectorAll("button:not([type]), button[type='submit'], input[type='submit']").forEach(function(control) {
+            if (!control.disabled) {
+                control.disabled = true;
+                control.setAttribute("data-mql-disabled", "true");
+            }
+        });
+
+        if (overlay) {
+            overlay.hidden = false;
+        }
+    });
+
+    // Si el navegador restaura una pagina desde su cache, permite volver a
+    // usar sus formularios con normalidad.
+    window.addEventListener("pageshow", ocultarCarga);
+})();
+</script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     var navbarMenu = document.getElementById("navbarMenu");

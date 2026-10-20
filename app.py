@@ -478,10 +478,30 @@ def asegurar_tabla_proveedores(cursor):
     """)
 
 
+def asegurar_tabla_solicitudes_idempotentes(cursor):
+    """Guarda los identificadores de formularios que ya fueron recibidos.
+
+    La llave primaria es deliberadamente el identificador del envio y no el
+    contenido del formulario: dos mascotas con los mismos datos pueden ser
+    validas, pero el mismo clic no debe ejecutar la misma operacion dos veces.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS solicitudes_idempotentes (
+            token CHAR(36) NOT NULL,
+            ruta VARCHAR(255) NOT NULL,
+            usuario_id INT NULL,
+            creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (token),
+            KEY idx_solicitudes_idempotentes_creado_en (creado_en)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
+    """)
+
+
 def asegurar_schema_crm():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     asegurar_tabla_proveedores(cursor)
+    asegurar_tabla_solicitudes_idempotentes(cursor)
 
     columnas = {
         "clientes": {
@@ -669,6 +689,57 @@ def verificar_schema_crm():
 
     asegurar_schema_crm()
     schema_checked = True
+
+
+@app.before_request
+def evitar_reenvios_duplicados():
+    """Ignora el segundo POST de un mismo formulario.
+
+    El navegador desactiva los botones inmediatamente, pero esta validacion
+    en base de datos tambien cubre dos solicitudes que hayan salido casi al
+    mismo tiempo (doble clic, reintento de red o dos pestañas).
+    """
+    if request.method != "POST" or request.endpoint in (None, "static", "login"):
+        return
+
+    token = (request.form.get("_submission_id") or "").strip()
+    if not token:
+        # Compatibilidad con clientes externos que aun no envian el token.
+        return
+
+    try:
+        token = str(uuid.UUID(token))
+    except (ValueError, AttributeError):
+        return
+
+    cursor = None
+    try:
+        cursor = mysql.connection.cursor()
+        # La tabla solo necesita proteger reintentos recientes; se limpia para
+        # que no crezca indefinidamente.
+        cursor.execute("""
+            DELETE FROM solicitudes_idempotentes
+            WHERE creado_en < DATE_SUB(NOW(), INTERVAL 7 DAY)
+        """)
+        cursor.execute("""
+            INSERT IGNORE INTO solicitudes_idempotentes (token, ruta, usuario_id)
+            VALUES (%s, %s, %s)
+        """, (token, request.path, current_user.get_id() if current_user.is_authenticated else None))
+        repetida = cursor.rowcount == 0
+        mysql.connection.commit()
+
+        if repetida:
+            flash("Esta acción ya fue recibida; se ignoró el segundo intento.")
+            return redirect(request.referrer or url_for("dashboard"))
+    except MySQLdb.Error:
+        # No se impide la operacion por una falla transitoria de esta capa. La
+        # interfaz sigue bloqueando el doble clic y el error principal sera
+        # atendido por el manejador de la ruta.
+        mysql.connection.rollback()
+        app.logger.exception("No se pudo registrar la solicitud idempotente")
+    finally:
+        if cursor:
+            cursor.close()
 
 
 @app.before_request
@@ -972,7 +1043,7 @@ def editar_cliente(id):
 # ELIMINAR CLIENTE (SOLO ADMIN)
 # -------------------
 
-@app.route("/eliminar_cliente/<int:id>")
+@app.post("/eliminar_cliente/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_cliente(id):
@@ -1281,7 +1352,7 @@ def foto_mascota(id):
 
 # ELIMINAR MASCOTA
 # -------------------
-@app.route("/eliminar_mascota/<int:id>")
+@app.post("/eliminar_mascota/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_mascota(id):
@@ -1289,6 +1360,30 @@ def eliminar_mascota(id):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT foto_drive_id FROM mascotas WHERE id=%s", (id,))
     mascota = cursor.fetchone()
+
+    if not mascota:
+        cursor.close()
+        flash("Mascota no encontrada")
+        return redirect(url_for("mascotas"))
+
+    # No se borra un historial por accidente. Si el registro es un duplicado,
+    # el administrador puede fusionarlo para conservar estas referencias.
+    cursor.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM citas WHERE mascota_id=%s) AS citas_count,
+            (SELECT COUNT(*) FROM ventas WHERE mascota_id=%s) AS ventas_count,
+            (SELECT COUNT(*) FROM detalle_venta WHERE mascota_id=%s) AS detalles_count
+    """, (id, id, id))
+    referencias = cursor.fetchone()
+    total_referencias = sum((referencias or {}).values())
+
+    if total_referencias:
+        cursor.close()
+        flash(
+            "No se eliminó la mascota porque tiene historial relacionado. "
+            "Usa ‘Fusionar registros duplicados’ para conservar sus citas y ventas."
+        )
+        return redirect(url_for("mascotas"))
 
     cursor.execute("DELETE FROM mascotas WHERE id=%s", (id,))
     mysql.connection.commit()
@@ -1305,6 +1400,104 @@ def eliminar_mascota(id):
         flash("Mascota eliminada, pero no se pudo borrar su foto de Drive")
     else:
         flash("Mascota eliminada correctamente")
+    return redirect(url_for("mascotas"))
+
+
+@app.post("/fusionar_mascotas")
+@login_required
+@rol_requerido(["admin"])
+def fusionar_mascotas():
+    """Conserva una mascota y transfiere a ella el historial de duplicados."""
+    try:
+        destino_id = int(request.form.get("mascota_destino", ""))
+        origenes_ids = sorted({
+            int(mascota_id)
+            for mascota_id in request.form.getlist("mascotas_origen")
+        })
+    except (TypeError, ValueError):
+        flash("Selecciona la mascota que se conservará y al menos un duplicado.")
+        return redirect(url_for("mascotas"))
+
+    origenes_ids = [mascota_id for mascota_id in origenes_ids if mascota_id != destino_id]
+    if not origenes_ids:
+        flash("Selecciona uno o más registros distintos al que se conservará.")
+        return redirect(url_for("mascotas"))
+
+    placeholders = ", ".join(["%s"] * len(origenes_ids))
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    fotos_origen = []
+
+    try:
+        cursor.execute("SELECT id, foto_drive_id FROM mascotas WHERE id=%s", (destino_id,))
+        mascota_destino = cursor.fetchone()
+        if not mascota_destino:
+            flash("La mascota que se conservará ya no existe.")
+            return redirect(url_for("mascotas"))
+
+        cursor.execute(
+            f"SELECT id, foto_drive_id FROM mascotas WHERE id IN ({placeholders})",
+            tuple(origenes_ids)
+        )
+        mascotas_origen = cursor.fetchall()
+        if len(mascotas_origen) != len(origenes_ids):
+            flash("Una de las mascotas seleccionadas ya no existe.")
+            return redirect(url_for("mascotas"))
+
+        # Todas las actualizaciones y el borrado son una sola transaccion: si
+        # alguna referencia no puede trasladarse, no se elimina ningun registro.
+        cursor.execute(
+            f"UPDATE citas SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
+            (destino_id, *origenes_ids)
+        )
+        citas_actualizadas = cursor.rowcount
+
+        cursor.execute(
+            f"UPDATE ventas SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
+            (destino_id, *origenes_ids)
+        )
+        ventas_actualizadas = cursor.rowcount
+
+        cursor.execute(
+            f"UPDATE detalle_venta SET mascota_id=%s WHERE mascota_id IN ({placeholders})",
+            (destino_id, *origenes_ids)
+        )
+        detalles_actualizados = cursor.rowcount
+
+        cursor.execute(
+            f"DELETE FROM mascotas WHERE id IN ({placeholders})",
+            tuple(origenes_ids)
+        )
+        mysql.connection.commit()
+
+        foto_destino_id = mascota_destino.get("foto_drive_id")
+        fotos_origen = [
+            mascota.get("foto_drive_id")
+            for mascota in mascotas_origen
+            if mascota.get("foto_drive_id") and mascota.get("foto_drive_id") != foto_destino_id
+        ]
+    except MySQLdb.Error:
+        mysql.connection.rollback()
+        app.logger.exception("No se pudieron fusionar las mascotas")
+        flash("No se pudieron fusionar los registros; no se hizo ningún cambio.")
+        return redirect(url_for("mascotas"))
+    finally:
+        cursor.close()
+
+    foto_error = False
+    for foto_drive_id in fotos_origen:
+        try:
+            eliminar_foto_drive(foto_drive_id)
+        except RuntimeError:
+            foto_error = True
+
+    mensaje = (
+        f"Se conservará la mascota #{destino_id}. Se fusionaron {len(origenes_ids)} "
+        f"duplicado(s): {citas_actualizadas} cita(s), {ventas_actualizadas} venta(s) "
+        f"y {detalles_actualizados} concepto(s) fueron transferidos."
+    )
+    if foto_error:
+        mensaje += " Algunas fotos de registros eliminados no se pudieron borrar de Drive."
+    flash(mensaje)
     return redirect(url_for("mascotas"))
 
 
@@ -1939,7 +2132,7 @@ def editar_cita(id):
 
 # CANCELAR CITA
 # -------------------
-@app.route("/cancelar_cita/<int:id>")
+@app.post("/cancelar_cita/<int:id>")
 @login_required
 def cancelar_cita(id):
 
@@ -2352,7 +2545,7 @@ def ventas():
 # -------------------
 # Cancelar Venta y Devolver Stock
 # -------------------
-@app.route("/cancelar_venta/<int:venta_id>")
+@app.post("/cancelar_venta/<int:venta_id>")
 @login_required
 @rol_requerido(["admin"])
 def cancelar_venta(venta_id):
@@ -2686,9 +2879,12 @@ def descargar_reporte_diario():
 # -------------------
 # CORTE DE CAJA
 # -------------------
-@app.route("/corte")
+@app.route("/corte", methods=["GET", "POST"])
 @login_required
 def corte():
+
+    if request.method == "GET":
+        return render_template("corte.html")
 
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -3003,7 +3199,7 @@ def editar_servicio(id):
 
 # ELIMINAR SERVICIO
 # -------------------
-@app.route("/eliminar_servicio/<int:id>")
+@app.post("/eliminar_servicio/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_servicio(id):
@@ -3297,7 +3493,7 @@ def editar_insumo(id):
 
 # ELIMINAR INSUMO
 # -------------------
-@app.route("/eliminar_insumo/<int:id>")
+@app.post("/eliminar_insumo/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_insumo(id):
@@ -3595,7 +3791,7 @@ def editar_proveedor(id):
     return render_template("editar_proveedor.html", proveedor=proveedor)
 
 
-@app.route("/eliminar_proveedor/<int:id>")
+@app.post("/eliminar_proveedor/<int:id>")
 @login_required
 @rol_requerido(["admin"])
 def eliminar_proveedor(id):

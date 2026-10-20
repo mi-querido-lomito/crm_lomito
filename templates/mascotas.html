@@ -98,6 +98,44 @@
     <button class="btn btn-success">Agregar Mascota</button>
 </form>
 
+{% if session["rol"] == "admin" and mascotas %}
+<div class="card border-warning mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Fusionar registros duplicados</h5>
+        <p class="card-text small mb-3">
+            Conserva una mascota y elimina los duplicados. Sus citas, ventas y conceptos de venta se transferirán al registro conservado.
+        </p>
+        <form method="POST"
+              action="{{ url_for('fusionar_mascotas') }}"
+              onsubmit="return confirm('Se eliminarán los registros seleccionados y su historial se transferirá a la mascota conservada. ¿Continuar?');">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label for="mascotasOrigen" class="form-label">Duplicados que se eliminarán</label>
+                    <select id="mascotasOrigen" name="mascotas_origen" class="form-select" multiple size="5" required>
+                        {% for m in mascotas %}
+                        <option value="{{ m.id }}">#{{ m.id }} — {{ m.nombre }} ({{ m.dueno }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Mantén presionada Ctrl (o Cmd) para seleccionar varios.</div>
+                </div>
+                <div class="col-md-4">
+                    <label for="mascotaDestino" class="form-label">Mascota que se conservará</label>
+                    <select id="mascotaDestino" name="mascota_destino" class="form-select" required>
+                        <option value="" selected disabled>Selecciona el registro principal</option>
+                        {% for m in mascotas %}
+                        <option value="{{ m.id }}">#{{ m.id }} — {{ m.nombre }} ({{ m.dueno }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-warning">Fusionar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <table class="table table-striped">
     <thead class="thead-mascotas">
     <tr>
@@ -152,11 +190,12 @@
             </a>
 
             {% if session["rol"] == "admin" %}
-            <a href="{{ url_for('eliminar_mascota', id=m.id) }}"
-                class="btn btn-sm btn-danger"
-                onclick="return confirm('¿Eliminar mascota?')">
-                Eliminar
-            </a>
+            <form method="POST"
+                  action="{{ url_for('eliminar_mascota', id=m.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Eliminar mascota? Si tiene citas o ventas, usa la fusión para conservar su historial.');">
+                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+            </form>
             {% endif %}
         </td>
     </tr>

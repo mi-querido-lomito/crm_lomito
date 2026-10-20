@@ -36,11 +36,12 @@
             </a>
 
             {% if session["rol"] == "admin" %}
-            <a href="{{ url_for('eliminar_cliente', id=c.id) }}"
-               class="btn btn-sm btn-danger"
-               onclick="return confirm('¿Eliminar cliente?')">
-               Eliminar ❌
-            </a>
+            <form method="POST"
+                  action="{{ url_for('eliminar_cliente', id=c.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Eliminar cliente?')">
+                <button type="submit" class="btn btn-sm btn-danger">Eliminar ❌</button>
+            </form>
             {% endif %}
         </td>
     </tr>

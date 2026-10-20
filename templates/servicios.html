@@ -75,11 +75,12 @@
                    ✏ Editar
                 </a>
 
-                <a href="{{ url_for('eliminar_servicio', id=s.id) }}"
-                   class="btn btn-sm btn-danger"
-                   onclick="return confirm('¿Estás seguro de eliminar este servicio? Esta acción no se puede deshacer.')">
-                   🗑 Eliminar
-                </a>
+                <form method="POST"
+                      action="{{ url_for('eliminar_servicio', id=s.id) }}"
+                      class="d-inline"
+                      onsubmit="return confirm('¿Estás seguro de eliminar este servicio? Esta acción no se puede deshacer.');">
+                    <button type="submit" class="btn btn-sm btn-danger">🗑 Eliminar</button>
+                </form>
 
             {% else %}
                 <span class="text-muted">Sin permisos</span>

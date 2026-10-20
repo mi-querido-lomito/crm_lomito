@@ -90,11 +90,12 @@
                🏷️ Etiqueta PNG
             </a>
 
-            <a href="{{ url_for('eliminar_insumo', id=i.id) }}"
-               class="btn btn-sm btn-danger"
-               onclick="return confirm('¿Eliminar este insumo?')">
-               🗑 Eliminar
-            </a>
+            <form method="POST"
+                  action="{{ url_for('eliminar_insumo', id=i.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Eliminar este insumo?')">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 Eliminar</button>
+            </form>
         </td>
     </tr>
     {% endfor %}

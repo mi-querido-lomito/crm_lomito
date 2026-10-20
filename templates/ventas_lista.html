@@ -47,11 +47,12 @@
 
             {% if session["rol"] == "admin" %}
             {% if v.estado == 'activa' %}
-            <a href="{{ url_for('cancelar_venta', venta_id=v.id) }}"
-               class="btn btn-sm btn-danger"
-               onclick="return confirm('¿Seguro que deseas cancelar esta venta?')">
-               Cancelar
-            </a>
+            <form method="POST"
+                  action="{{ url_for('cancelar_venta', venta_id=v.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Seguro que deseas cancelar esta venta?')">
+                <button type="submit" class="btn btn-sm btn-danger">Cancelar</button>
+            </form>
             {% endif %}
             {% endif %}
         </td>

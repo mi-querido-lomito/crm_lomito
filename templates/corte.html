@@ -5,9 +5,8 @@
 
 <p>El corte guarda el total del día actual.</p>
 
-<a href="{{ url_for('corte') }}" class="btn btn-danger">
-    Realizar Corte
-</a>
+<form method="POST" action="{{ url_for('corte') }}" onsubmit="return confirm('¿Realizar el corte de caja actual?');">
+    <button type="submit" class="btn btn-danger">Realizar Corte</button>
+</form>
 
 {% endblock %}
-
