@@ -148,7 +148,7 @@
                id="servicioSearch"
                class="form-control"
                autocomplete="off"
-               placeholder="Buscar servicio por nombre">
+               placeholder="Buscar por nombre, descripción, código o precio (ej. 280)">
 
         <div id="servicioResults"
              class="list-group position-absolute w-100 shadow-sm d-none"
@@ -271,19 +271,6 @@ const clientesCita = [
     return cliente;
 });
 
-const serviciosCita = [
-    {% for s in servicios %}
-    {
-        id: {{ s.id }},
-        nombre: {{ s.nombre|tojson }},
-        precio: {{ (s.precio or 0)|tojson }}
-    },
-    {% endfor %}
-].map(function(servicio) {
-    servicio.searchText = normalizeSearch(servicio.nombre);
-    return servicio;
-});
-
 function normalizeSearch(value) {
     return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -355,14 +342,18 @@ function hideServicioResults() {
 function selectServicio(servicio) {
     servicioId.value = servicio.id;
     servicioSearch.value = servicio.nombre + " - $" + servicio.precio;
-    servicioSelected.textContent = "Servicio seleccionado: " + servicio.nombre + " ($" + servicio.precio + ")";
+    const duracion = servicio.duracion_min ? servicio.duracion_min + " min" : "Duración no especificada";
+    servicioSelected.textContent = "Servicio seleccionado: " + servicio.nombre + " | $" + servicio.precio +
+        " | " + servicio.descripcion + " | " + duracion +
+        (servicio.codigo_barras ? " | Código: " + servicio.codigo_barras : "");
     servicioSelected.className = "form-text text-success mb-2";
     hideServicioResults();
     actualizarEstimacionAgenda();
 }
 
-function renderServicioResults() {
-    const query = normalizeSearch(servicioSearch.value.trim());
+let servicioSearchController = null;
+async function renderServicioResults() {
+    const query = servicioSearch.value.trim();
     servicioId.value = "";
     servicioSelected.textContent = "Selecciona un servicio para la cita.";
     servicioSelected.className = "form-text mb-2";
@@ -370,38 +361,84 @@ function renderServicioResults() {
     actualizarEstimacionAgenda();
 
     if (query.length === 0) {
+        if (servicioSearchController) {
+            servicioSearchController.abort();
+        }
         hideServicioResults();
         return;
     }
 
-    const matches = [];
-    for (let index = 0; index < serviciosCita.length && matches.length < 12; index += 1) {
-        if (serviciosCita[index].searchText.includes(query)) {
-            matches.push(serviciosCita[index]);
-        }
+    if (servicioSearchController) {
+        servicioSearchController.abort();
     }
+    servicioSearchController = new AbortController();
+    const signal = servicioSearchController.signal;
 
-    if (matches.length === 0) {
+    try {
+        const params = new URLSearchParams({ q: query, limite: "12" });
+        const response = await fetch("{{ url_for('api_buscar_servicios') }}?" + params.toString(), {
+            headers: { "Accept": "application/json" },
+            signal: signal
+        });
+        const data = await response.json();
+        if (signal.aborted || query !== servicioSearch.value.trim()) {
+            return;
+        }
+
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "No se pudo buscar servicios.");
+        }
+
+        if (data.resultados.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "list-group-item text-muted";
+            empty.textContent = "No se encontraron servicios. Intenta con otro nombre o precio.";
+            servicioResults.appendChild(empty);
+            servicioResults.classList.remove("d-none");
+            return;
+        }
+
+        data.resultados.forEach(function(servicio) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "list-group-item list-group-item-action text-start";
+
+            const encabezado = document.createElement("div");
+            encabezado.className = "d-flex justify-content-between gap-2";
+            const nombre = document.createElement("strong");
+            nombre.textContent = servicio.nombre;
+            const precio = document.createElement("strong");
+            precio.textContent = "$" + (servicio.precio || "0.00");
+            encabezado.append(nombre, precio);
+
+            const descripcion = document.createElement("div");
+            descripcion.className = "small text-muted mt-1";
+            descripcion.textContent = servicio.descripcion;
+
+            const detalles = document.createElement("div");
+            detalles.className = "small text-muted";
+            const duracion = servicio.duracion_min ? servicio.duracion_min + " min" : "Duración no especificada";
+            detalles.textContent = duracion +
+                (servicio.codigo_barras ? " · Código: " + servicio.codigo_barras : "");
+
+            button.append(encabezado, descripcion, detalles);
+            button.addEventListener("click", function() {
+                selectServicio(servicio);
+            });
+            servicioResults.appendChild(button);
+        });
+
+        servicioResults.classList.remove("d-none");
+    } catch (error) {
+        if (error.name === "AbortError") {
+            return;
+        }
         const empty = document.createElement("div");
-        empty.className = "list-group-item text-muted";
-        empty.textContent = "No se encontraron servicios.";
+        empty.className = "list-group-item text-danger";
+        empty.textContent = error.message || "No se pudo buscar servicios.";
         servicioResults.appendChild(empty);
         servicioResults.classList.remove("d-none");
-        return;
     }
-
-    matches.forEach(function(servicio) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "list-group-item list-group-item-action";
-        button.innerHTML = "<strong>" + servicio.nombre + "</strong><br><small>$" + servicio.precio + "</small>";
-        button.addEventListener("click", function() {
-            selectServicio(servicio);
-        });
-        servicioResults.appendChild(button);
-    });
-
-    servicioResults.classList.remove("d-none");
 }
 
 function clienteDetalle(cliente) {

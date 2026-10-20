@@ -18,10 +18,12 @@ import base64
 import io
 import json
 import os
+import re
 import textwrap
 import unicodedata
 import uuid
 from collections import defaultdict
+from decimal import Decimal
 from flask import send_file
 from flask import session
 import csv
@@ -1184,6 +1186,14 @@ def resumen_agenda_dia(cursor, fecha, mascota_id=None):
         "nuevo_min": nuevo_min,
         "cabe": ocupado + nuevo_min <= jornada_min and inicio <= fecha < fin,
     }
+
+
+def precio_filtro_servicio(valor):
+    """Convierte un precio escrito por el usuario a Decimal sin perder centavos."""
+    texto = (valor or "").strip().replace("$", "").replace(",", "")
+    if not re.fullmatch(r"\d+(?:\.\d{1,2})?", texto):
+        return None
+    return Decimal(texto)
 
 
 def cerrar_cajas_vencidas(cursor):
@@ -2403,14 +2413,14 @@ def citas():
     if request.method == "POST":
         mascota_opcion = request.form.get("mascota_opcion", "existente")
         mascota_id = request.form.get("mascota_id")
-        fecha = request.form["fecha"]
+        fecha = (request.form.get("fecha") or "").strip()
         servicio_id_raw = (request.form.get("servicio_id") or "").strip()
         notas = request.form.get("notas")
         try:
             fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M")
             servicio_id = int(servicio_id_raw)
-        except ValueError:
-            flash("Selecciona un servicio válido de la lista")
+        except (TypeError, ValueError):
+            flash("Revisa la fecha y el servicio seleccionado")
             cursor.close()
             return redirect(url_for("citas"))
 
@@ -2431,7 +2441,21 @@ def citas():
                 cursor.close()
                 return redirect(url_for("citas"))
 
-            if not cliente_id:
+            if cliente_id:
+                try:
+                    cliente_id = int(cliente_id)
+                except (TypeError, ValueError):
+                    flash("Selecciona un dueño válido de la lista")
+                    cursor.close()
+                    return redirect(url_for("citas"))
+
+                cursor.execute("SELECT id FROM clientes WHERE id=%s", (cliente_id,))
+                if not cursor.fetchone():
+                    flash("El dueño seleccionado ya no existe. Elige otro de la lista.")
+                    cursor.close()
+                    return redirect(url_for("citas"))
+                cliente_nombre = None
+            else:
                 cliente_nombre = (request.form.get("cliente_nombre") or "").strip()
                 cliente_telefono = (request.form.get("cliente_telefono") or "").strip()
                 cliente_direccion = (request.form.get("cliente_direccion") or "").strip()
@@ -2440,43 +2464,64 @@ def citas():
                     flash("Selecciona un dueño o escribe el nombre del dueño nuevo")
                     cursor.close()
                     return redirect(url_for("citas"))
-
-                cursor.execute("""
-                    INSERT INTO clientes (nombre, telefono, direccion)
-                    VALUES (%s, %s, %s)
-                """, (cliente_nombre, cliente_telefono, cliente_direccion))
-                mysql.connection.commit()
-                cliente_id = cursor.lastrowid
-
-            cursor.execute("""
-                INSERT INTO mascotas
-                (nombre, especie, cliente_id, raza, edad, genero, talla, color, alergias, notas)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                mascota_nombre,
-                request.form.get("mascota_especie") or "Perro",
-                cliente_id,
-                request.form.get("mascota_raza"),
-                request.form.get("mascota_edad") or None,
-                request.form.get("mascota_genero"),
-                request.form.get("mascota_talla"),
-                request.form.get("mascota_color"),
-                request.form.get("mascota_alergias"),
-                request.form.get("mascota_notas"),
-            ))
-            mysql.connection.commit()
-            mascota_id = cursor.lastrowid
         else:
             if not mascota_id:
                 flash("Selecciona una mascota de la lista")
                 cursor.close()
                 return redirect(url_for("citas"))
 
-        cursor.execute("""
-            INSERT INTO citas (mascota_id, servicio_id, fecha, estado, notas)
-            VALUES (%s, %s, %s, 'Pendiente', %s)
-        """, (mascota_id, servicio_id, fecha_convertida, notas))
-        mysql.connection.commit()
+            try:
+                mascota_id = int(mascota_id)
+            except (TypeError, ValueError):
+                flash("Selecciona una mascota válida de la lista")
+                cursor.close()
+                return redirect(url_for("citas"))
+
+            cursor.execute("SELECT id FROM mascotas WHERE id=%s", (mascota_id,))
+            if not cursor.fetchone():
+                flash("La mascota seleccionada ya no existe. Elige otra de la lista.")
+                cursor.close()
+                return redirect(url_for("citas"))
+
+        try:
+            if mascota_opcion == "nueva":
+                if not cliente_id:
+                    cursor.execute("""
+                        INSERT INTO clientes (nombre, telefono, direccion)
+                        VALUES (%s, %s, %s)
+                    """, (cliente_nombre, cliente_telefono, cliente_direccion))
+                    cliente_id = cursor.lastrowid
+
+                cursor.execute("""
+                    INSERT INTO mascotas
+                    (nombre, especie, cliente_id, raza, edad, genero, talla, color, alergias, notas)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    mascota_nombre,
+                    request.form.get("mascota_especie") or "Perro",
+                    cliente_id,
+                    request.form.get("mascota_raza"),
+                    request.form.get("mascota_edad") or None,
+                    request.form.get("mascota_genero"),
+                    request.form.get("mascota_talla"),
+                    request.form.get("mascota_color"),
+                    request.form.get("mascota_alergias"),
+                    request.form.get("mascota_notas"),
+                ))
+                mascota_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO citas (mascota_id, servicio_id, fecha, estado, notas)
+                VALUES (%s, %s, %s, 'Pendiente', %s)
+            """, (mascota_id, servicio_id, fecha_convertida, notas))
+            mysql.connection.commit()
+        except MySQLdb.Error:
+            mysql.connection.rollback()
+            app.logger.exception("No se pudo agendar la cita")
+            flash("No se pudo agendar la cita. Revisa los datos e inténtalo de nuevo.")
+            cursor.close()
+            return redirect(url_for("citas"))
+
         flash("Cita agendada correctamente")
 
     cursor.execute("""
@@ -2512,6 +2557,84 @@ def citas():
                            servicios=servicios,
                            clientes=clientes,
                            agenda_hoy=agenda_hoy)
+
+
+@app.route("/api/servicios/buscar")
+@login_required
+def api_buscar_servicios():
+    """Busca servicios por texto, precio exacto o rango de precio.
+
+    Ejemplos: ``?q=baño``, ``?q=280``, ``?precio=280`` y
+    ``?precio_min=200&precio_max=300``.
+    """
+    query = (request.args.get("q") or "").strip()
+    precio_exacto_raw = (request.args.get("precio") or "").strip()
+    precio_min_raw = (request.args.get("precio_min") or "").strip()
+    precio_max_raw = (request.args.get("precio_max") or "").strip()
+
+    precio_exacto = precio_filtro_servicio(precio_exacto_raw) if precio_exacto_raw else None
+    precio_min = precio_filtro_servicio(precio_min_raw) if precio_min_raw else None
+    precio_max = precio_filtro_servicio(precio_max_raw) if precio_max_raw else None
+    precio_en_query = precio_filtro_servicio(query)
+
+    if (precio_exacto_raw and precio_exacto is None) or (precio_min_raw and precio_min is None) or (precio_max_raw and precio_max is None):
+        return {"ok": False, "error": "El precio debe ser un número con hasta dos decimales."}, 400
+    if precio_min is not None and precio_max is not None and precio_min > precio_max:
+        return {"ok": False, "error": "El precio mínimo no puede superar al precio máximo."}, 400
+
+    try:
+        limite = int(request.args.get("limite", 20))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "El límite debe ser un número entero."}, 400
+    if not 1 <= limite <= 50:
+        return {"ok": False, "error": "El límite debe estar entre 1 y 50."}, 400
+
+    condiciones = []
+    parametros = []
+    if query:
+        patron = f"%{query}%"
+        busqueda = "(nombre LIKE %s OR descripcion LIKE %s OR codigo_barras LIKE %s"
+        parametros.extend((patron, patron, patron))
+        if precio_en_query is not None:
+            busqueda += " OR precio=%s"
+            parametros.append(precio_en_query)
+        condiciones.append(busqueda + ")")
+    if precio_exacto is not None:
+        condiciones.append("precio=%s")
+        parametros.append(precio_exacto)
+    if precio_min is not None:
+        condiciones.append("precio >= %s")
+        parametros.append(precio_min)
+    if precio_max is not None:
+        condiciones.append("precio <= %s")
+        parametros.append(precio_max)
+
+    where = " WHERE " + " AND ".join(condiciones) if condiciones else ""
+    parametros.append(limite)
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute(f"""
+        SELECT id, nombre, precio, descripcion, duracion_min, codigo_barras
+        FROM servicios
+        {where}
+        ORDER BY nombre, precio, id
+        LIMIT %s
+    """, tuple(parametros))
+    servicios = cursor.fetchall()
+    cursor.close()
+
+    resultados = []
+    for servicio in servicios:
+        precio = servicio.get("precio")
+        resultados.append({
+            "id": servicio["id"],
+            "nombre": servicio.get("nombre") or "Servicio sin nombre",
+            "precio": f"{Decimal(str(precio)):.2f}" if precio is not None else None,
+            "descripcion": servicio.get("descripcion") or "Sin descripción",
+            "duracion_min": servicio.get("duracion_min"),
+            "codigo_barras": servicio.get("codigo_barras") or "",
+        })
+
+    return {"ok": True, "resultados": resultados, "total": len(resultados)}
 
 
 @app.route("/api/agenda_dia")
