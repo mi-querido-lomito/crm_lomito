@@ -10,6 +10,7 @@ Fecha: 21 de octubre de 2026
 4. **El cierre de caja incluía ventas con tarjeta y transferencia en el efectivo esperado.** Ahora el efectivo esperado es monto inicial + ventas en efectivo − gastos pagados en efectivo.
 5. **Los gastos no guardaban el medio de pago.** Los nuevos gastos requieren Efectivo, Tarjeta o Transferencia. Se agregó **Capital** con los saldos netos y el historial de ventas y gastos por medio.
    Los gastos históricos no tienen medio de pago en sus datos y aparecen como “Sin especificar”; no se asignan a una cuenta por suposición.
+6. **Capital mostraba “Ocurrió un error inesperado” en producción.** Se reemplazó la consulta combinada `UNION ALL` por lecturas separadas de ventas y gastos para evitar incompatibilidades entre las columnas de ambas tablas; además, el cursor se cierra aunque falle una lectura.
 
 ## Pruebas ejecutadas
 
@@ -25,6 +26,8 @@ Todas las pruebas siguientes se hicieron localmente con una conexión MySQL simu
 - Dependencias de escritorio instaladas en `desktop_app/venv`: pywebview 6.2.1 y PyInstaller 6.21.0.
 - Ejecutable recompilado en `desktop_app/dist/MiQueridoLomitoCRM.exe` (12,882,473 bytes; compilación PyInstaller 6.21.0 correcta). En la prueba de arranque el proceso siguió activo durante 8 segundos y se detectaron 24 procesos de WebView2; el título de la ventana no quedó accesible a la consulta automatizada.
 - Smoke check posterior: importación de Flask y compilación Jinja de las cinco plantillas modificadas — correctos; rutas `/desktop_session`, `/capital`, `/cerrar_caja` y `/gastos` registradas.
+- Prueba aislada de `/capital` con ventas, gastos con medio y gastos históricos sin medio: saldos netos e historial renderizados correctamente. No se conectó ni escribió en la base de producción.
+- Revisión general tras el cambio: las 63 rutas Flask registradas, todas las plantillas Jinja compiladas, `py_compile` y `git diff --check` — correctos.
 - WebView2 Runtime detectado en Windows, versión `155.0.4283.62`.
 - Prueba de solo lectura desde dos WebViews conectados al servidor desplegado: la ventana general recibió `302` en `/` y `200` en `/login`; la ventana POS recibió `302` en `/ventas/ventana` y `200` en `/login`. El redireccionamiento al login confirma que el POS está desplegado y exige autenticación.
 - En una prueba anterior, el ejecutable creó dos ventanas y lanzó procesos `msedgewebview2.exe`; esa compilación anterior todavía solicitaba login en cada ventana. La compilación actual cambia el flujo para abrir el POS tras autenticarse.
@@ -36,6 +39,7 @@ Todas las pruebas siguientes se hicieron localmente con una conexión MySQL simu
 - Iniciar sesión en las ventanas del `.exe` y comprobar que ambas conservan la autenticación. La petición sin sesión se verificó, pero no se usaron credenciales reales.
 - Confirmar el callback de login y la sesión compartida con credenciales reales. La prueba actual no puede completarse sin acceso de usuario.
 - Desplegar los cambios actuales de `app.py` y sus templates en el servidor para habilitar `/desktop_session`, medio de pago de gastos, `/capital` y el nuevo cálculo de caja. El `.exe` solo es el contenedor de escritorio; estos cambios de API no están dentro del binario.
+- Desplegar también la corrección más reciente de Capital en `app.py` para que sustituya la versión que está generando el error en producción.
 - Validar con importes conocidos el cierre físico (apertura + ventas efectivo − gastos efectivo) y los saldos por cuenta. No se escribieron transacciones de producción.
 - Completar una venta de prueba autenticada y comprobar su ticket desde el ejecutable. No se creó una transacción de producción durante esta verificación.
 - En navegador, pulsar **Abrir venta aparte** y comprobar que se abre la segunda pestaña. El servidor web no puede forzar una ventana emergente al arrancar; el navegador la bloquearía sin una acción del usuario.

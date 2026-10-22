@@ -4538,17 +4538,24 @@ def gastos():
 @rol_requerido(["admin"])
 def capital():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute("""
-        SELECT fecha, 'Venta' AS tipo, CONCAT('Venta #', id) AS concepto,
-               total AS monto, metodo_pago
-        FROM ventas
-        WHERE estado='activa'
-        UNION ALL
-        SELECT fecha, 'Gasto' AS tipo, concepto, monto, metodo_pago
-        FROM gastos_fijos
-    """)
-    movimientos = cursor.fetchall()
-    cursor.close()
+    try:
+        cursor.execute("""
+            SELECT fecha, 'Venta' AS tipo, CONCAT('Venta #', id) AS concepto,
+                   total AS monto, metodo_pago
+            FROM ventas
+            WHERE estado='activa'
+        """)
+        movimientos_ventas = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT fecha, 'Gasto' AS tipo, concepto, monto, metodo_pago
+            FROM gastos_fijos
+        """)
+        movimientos_gastos = cursor.fetchall()
+    finally:
+        cursor.close()
+
+    movimientos = list(movimientos_ventas) + list(movimientos_gastos)
 
     orden_pago = {"Efectivo": 0, "Tarjeta": 1, "Transferencia": 2}
     saldos = {medio: Decimal("0.00") for medio in orden_pago}
