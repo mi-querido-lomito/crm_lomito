@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preparando punto de venta</title>
+</head>
+<body>
+  <p id="estado">Sesión iniciada. Abriendo el punto de venta…</p>
+  <p><a href="{{ dashboard_url }}">Continuar al panel</a></p>
+  <script>
+    (function () {
+      const destino = {{ dashboard_url|tojson }};
+      let intentos = 0;
+      const abrir = async () => {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.open_pos) {
+          try {
+            await window.pywebview.api.open_pos();
+            window.location.replace(destino);
+            return;
+          } catch (error) {
+            document.getElementById('estado').textContent = 'No se pudo abrir la ventana de venta. Puedes continuar al panel.';
+          }
+        }
+        if (++intentos < 100) window.setTimeout(abrir, 100);
+      };
+      abrir();
+    })();
+  </script>
+</body>
+</html>

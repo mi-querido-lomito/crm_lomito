@@ -1,9 +1,12 @@
 # CRM Mi Querido Lomito - App de Escritorio (Windows)
 
 Ventana nativa que carga el CRM (ya desplegado en tu servidor) usando WebView2.
-Al abrirla muestra la ventana general y otra ventana dedicada al punto de venta.
-Cada ventana conserva su propio carrito. No corre Flask ni MySQL en la PC del
+Primero abre la ventana general; después de iniciar sesión abre automáticamente
+otra ventana dedicada al punto de venta. Ambas usan la misma sesión del servidor,
+y cada ventana conserva su propio carrito. No corre Flask ni MySQL en la PC del
 usuario; solo muestra el sitio en una ventana sin barra de navegador.
+El perfil WebView2 compartido se guarda en `%LOCALAPPDATA%\MiQueridoLomitoCRM\WebView2`
+para conservar la sesión entre las dos ventanas.
 
 ## Compilar el .exe
 
@@ -60,4 +63,6 @@ actualizados; si falta, Windows lo descarga automáticamente o se instala
 desde https://developer.microsoft.com/microsoft-edge/webview2/).
 
 En la versión web, usa **Abrir venta aparte** en la barra superior para abrir
-el punto de venta en otra pestaña con un carrito independiente.
+el punto de venta en otra pestaña con un carrito independiente. La apertura
+automática del segundo espacio se reserva al ejecutable para evitar popups y
+no abrir ventanas inesperadas en Android o iOS.

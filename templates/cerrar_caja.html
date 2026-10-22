@@ -2,6 +2,7 @@
 {% block content %}
 
 <h2>Cerrar Caja</h2>
+<p class="text-muted">Cuenta solo el efectivo: monto inicial + ventas en efectivo − gastos pagados en efectivo. Los pagos con tarjeta y transferencia no forman parte del efectivo esperado.</p>
 
 {% if session["rol"] == "admin" %}
 <p>Monto inicial: ${{ caja.monto_inicial }}</p>

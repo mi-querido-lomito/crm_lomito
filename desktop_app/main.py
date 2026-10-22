@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from urllib.parse import urlsplit, urlunsplit
 
 import webview
 
@@ -41,28 +42,58 @@ def load_url():
     return DEFAULT_URL
 
 
+class DesktopBridge:
+    def __init__(self, pos_url):
+        self.pos_url = pos_url
+        self.pos_window = None
+
+    def open_pos(self):
+        if self.pos_window is None:
+            self.pos_window = webview.create_window(
+                "Mi Querido Lomito - Punto de venta",
+                self.pos_url,
+                width=1100,
+                height=800,
+                min_size=(360, 600),
+                text_select=True,
+                confirm_close=False,
+            )
+        else:
+            try:
+                self.pos_window.show()
+                self.pos_window.restore()
+            except Exception:
+                pass
+        return True
+
+
+def append_path(url, path):
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + path, parts.query, parts.fragment))
+
+
+def webview_storage_path():
+    root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    path = os.path.join(root, "MiQueridoLomitoCRM", "WebView2")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def main():
-    url = load_url()
+    base_url = load_url().rstrip("/")
+    bridge = DesktopBridge(append_path(base_url, "/ventas/ventana"))
 
     webview.create_window(
         "Mi Querido Lomito - Ventana general",
-        url,
+        append_path(base_url, "/desktop_session"),
         width=1280,
         height=800,
         min_size=(360, 600),
         text_select=True,
         confirm_close=False,
+        js_api=bridge,
     )
-    webview.create_window(
-        "Mi Querido Lomito - Punto de venta",
-        url.rstrip("/") + "/ventas/ventana",
-        width=1100,
-        height=800,
-        min_size=(360, 600),
-        text_select=True,
-        confirm_close=False,
-    )
-    webview.start()
+    webview.start(private_mode=False, storage_path=webview_storage_path())
 
 
 if __name__ == "__main__":

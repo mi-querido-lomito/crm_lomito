@@ -583,6 +583,9 @@ def asegurar_schema_crm():
             "mascota_id": "INT NULL",
             "cita_id": "INT NULL",
         },
+        "gastos_fijos": {
+            "metodo_pago": "VARCHAR(30) NULL",
+        },
         "detalle_venta": {
             "mascota_id": "INT NULL",
         },
@@ -1245,12 +1248,21 @@ def cerrar_cajas_vencidas(cursor):
             SELECT IFNULL(SUM(total),0) as total_ventas
             FROM ventas
             WHERE estado='activa'
+            AND LOWER(TRIM(metodo_pago)) IN ('efectivo', 'cash')
             AND fecha >= %s
             AND fecha <= %s
         """, (fecha_apertura, cierre_dia))
         resultado = cursor.fetchone()
         total_ventas = float(resultado["total_ventas"] or 0) if resultado else 0
-        monto_final = float(caja["monto_inicial"] or 0) + total_ventas
+        cursor.execute("""
+            SELECT IFNULL(SUM(monto),0) AS total_gastos
+            FROM gastos_fijos
+            WHERE LOWER(TRIM(metodo_pago)) IN ('efectivo', 'cash')
+            AND fecha >= DATE(%s) AND fecha <= DATE(%s)
+        """, (fecha_apertura, cierre_dia))
+        gastos = cursor.fetchone()
+        total_gastos = float(gastos["total_gastos"] or 0) if gastos else 0
+        monto_final = float(caja["monto_inicial"] or 0) + total_ventas - total_gastos
 
         cursor.execute("""
             UPDATE caja
@@ -1393,6 +1405,7 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    next_url = request.values.get("next", "")
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
@@ -1407,11 +1420,21 @@ def login():
         if password_hash and check_password_hash(password_hash, password):
             login_user(User(user))
             session["rol"] = user["rol"]
+            # Solo aceptar destinos relativos al mismo sitio para evitar open redirects.
+            if next_url.startswith("/") and not next_url.startswith("//"):
+                return redirect(next_url)
             return redirect(url_for("dashboard"))
         else:
             flash("Credenciales incorrectas")
 
-    return render_template("login.html")
+    return render_template("login.html", next_url=next_url)
+
+
+@app.get("/desktop_session")
+@login_required
+def desktop_session():
+    """Puente de inicio de sesión usado únicamente por el ejecutable Windows."""
+    return render_template("desktop_session.html", dashboard_url=url_for("dashboard"))
 
 @app.route("/logout")
 @login_required
@@ -3628,18 +3651,29 @@ def cerrar_caja():
         try:
             monto_final = float(request.form.get("monto_final"))
 
-            # Calcular ventas desde apertura hasta ahora
+            # La caja representa efectivo físico: ventas en efectivo menos
+            # gastos pagados en efectivo desde la apertura.
             cursor.execute("""
                 SELECT IFNULL(SUM(total),0) as total_ventas
                 FROM ventas
                 WHERE estado='activa'
+                AND LOWER(TRIM(metodo_pago)) IN ('efectivo', 'cash')
                 AND fecha BETWEEN %s AND NOW()
             """, (caja["fecha_apertura"],))
 
             resultado = cursor.fetchone()
             total_ventas = resultado["total_ventas"] if resultado else 0
+            cursor.execute("""
+                SELECT IFNULL(SUM(monto),0) AS total_gastos
+                FROM gastos_fijos
+                WHERE LOWER(TRIM(metodo_pago)) IN ('efectivo', 'cash')
+                AND fecha BETWEEN DATE(%s) AND CURDATE()
+            """, (caja["fecha_apertura"],))
+            gastos = cursor.fetchone()
+            total_gastos = gastos["total_gastos"] if gastos else 0
 
-            diferencia = monto_final - (float(caja["monto_inicial"]) + float(total_ventas))
+            esperado = float(caja["monto_inicial"]) + float(total_ventas) - float(total_gastos)
+            diferencia = monto_final - esperado
 
             cursor.execute("""
                 UPDATE caja
@@ -4477,11 +4511,16 @@ def gastos():
         monto = request.form["monto"]
         fecha = request.form["fecha"]
         descripcion = request.form["descripcion"]
+        metodo_pago = request.form.get("metodo_pago", "").strip()
+        if metodo_pago not in ("Efectivo", "Tarjeta", "Transferencia"):
+            flash("Selecciona un medio de pago válido")
+            cursor.close()
+            return redirect(url_for("gastos"))
 
         cursor.execute("""
-            INSERT INTO gastos_fijos (concepto, monto, fecha, descripcion)
-            VALUES (%s, %s, %s, %s)
-        """, (concepto, monto, fecha, descripcion))
+            INSERT INTO gastos_fijos (concepto, monto, fecha, descripcion, metodo_pago)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (concepto, monto, fecha, descripcion, metodo_pago))
 
         mysql.connection.commit()
         flash("Gasto registrado")
@@ -4492,6 +4531,43 @@ def gastos():
     cursor.close()
 
     return render_template("gastos.html", gastos=gastos)
+
+
+@app.get("/capital")
+@login_required
+@rol_requerido(["admin"])
+def capital():
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor.execute("""
+        SELECT fecha, 'Venta' AS tipo, CONCAT('Venta #', id) AS concepto,
+               total AS monto, metodo_pago
+        FROM ventas
+        WHERE estado='activa'
+        UNION ALL
+        SELECT fecha, 'Gasto' AS tipo, concepto, monto, metodo_pago
+        FROM gastos_fijos
+    """)
+    movimientos = cursor.fetchall()
+    cursor.close()
+
+    orden_pago = {"Efectivo": 0, "Tarjeta": 1, "Transferencia": 2}
+    saldos = {medio: Decimal("0.00") for medio in orden_pago}
+    for mov in movimientos:
+        medio = (mov.get("metodo_pago") or "Sin especificar").strip().title()
+        mov["medio"] = medio if medio in orden_pago else "Sin especificar"
+        importe = Decimal(str(mov.get("monto") or 0))
+        saldos[mov["medio"]] = saldos.get(mov["medio"], Decimal("0.00")) + (importe if mov["tipo"] == "Venta" else -importe)
+    movimientos.sort(key=lambda mov: (str(mov.get("fecha") or ""), mov["tipo"] == "Venta"))
+
+    acumulados = {medio: Decimal("0.00") for medio in orden_pago}
+    for mov in movimientos:
+        medio = mov["medio"]
+        if medio in acumulados:
+            importe = Decimal(str(mov.get("monto") or 0))
+            acumulados[medio] += importe if mov["tipo"] == "Venta" else -importe
+        mov["saldo_medio"] = acumulados.get(medio)
+
+    return render_template("capital.html", movimientos=movimientos, saldos=saldos)
 
 
 # -------------------FINAL DE APP-------------------
