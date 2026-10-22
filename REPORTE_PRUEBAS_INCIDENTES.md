@@ -28,6 +28,8 @@ Todas las pruebas siguientes se hicieron localmente con una conexión MySQL simu
 - Smoke check posterior: importación de Flask y compilación Jinja de las cinco plantillas modificadas — correctos; rutas `/desktop_session`, `/capital`, `/cerrar_caja` y `/gastos` registradas.
 - Prueba aislada de `/capital` con ventas, gastos con medio y gastos históricos sin medio: saldos netos e historial renderizados correctamente. No se conectó ni escribió en la base de producción.
 - Revisión general tras el cambio: las 63 rutas Flask registradas, todas las plantillas Jinja compiladas, `py_compile` y `git diff --check` — correctos.
+- Instalador de Windows: NSIS 3.13 generó `desktop_app/dist/MiQueridoLomitoCRM_Setup.exe` (versión 1.1.0). La variante aislada instaló el ejecutable, icono y desinstalador en una carpeta temporal; el desinstalador terminó con código 0. La prueba omitió accesos directos y registro de usuario. El instalador no contiene ni modifica la API.
+- Arranque desde la copia instalada: el proceso permaneció activo y generó procesos WebView2. No se completó login ni se ejecutaron operaciones contra la API.
 - WebView2 Runtime detectado en Windows, versión `155.0.4283.62`.
 - Prueba de solo lectura desde dos WebViews conectados al servidor desplegado: la ventana general recibió `302` en `/` y `200` en `/login`; la ventana POS recibió `302` en `/ventas/ventana` y `200` en `/login`. El redireccionamiento al login confirma que el POS está desplegado y exige autenticación.
 - En una prueba anterior, el ejecutable creó dos ventanas y lanzó procesos `msedgewebview2.exe`; esa compilación anterior todavía solicitaba login en cada ventana. La compilación actual cambia el flujo para abrir el POS tras autenticarse.

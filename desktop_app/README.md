@@ -42,6 +42,19 @@ arriba). El instalador:
 - Crea accesos directos en el Menu Inicio y en el Escritorio.
 - Registra un desinstalador visible en "Agregar o quitar programas".
 
+La versión del instalador es 1.1.0. Para validar el paquete sin crear accesos
+directos ni tocar el registro del usuario, puede compilarse una variante de
+prueba y darle un destino aislado:
+
+```
+makensis /DINSTALLER_TEST_MODE installer.nsi
+dist\MiQueridoLomitoCRM_Setup_Test.exe /S /D=%TEMP%\LomitoCRM-Test
+```
+
+La variante de prueba conserva los mismos archivos de aplicación, icono y
+desinstalador, pero omite accesos directos y claves de desinstalación del
+registro.
+
 ## Configurar la URL del servidor
 
 Al ejecutarlo por primera vez, se crea un archivo `lomito_config.json`

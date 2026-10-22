@@ -1434,6 +1434,7 @@ def login():
 @login_required
 def desktop_session():
     """Puente de inicio de sesión usado únicamente por el ejecutable Windows."""
+    session["desktop_app"] = True
     return render_template("desktop_session.html", dashboard_url=url_for("dashboard"))
 
 @app.route("/logout")

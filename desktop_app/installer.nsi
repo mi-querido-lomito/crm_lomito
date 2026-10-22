@@ -1,12 +1,16 @@
 !define APP_NAME "Mi Querido Lomito CRM"
 !define APP_EXE "MiQueridoLomitoCRM.exe"
 !define APP_PUBLISHER "Mi Querido Lomito"
-!define APP_VERSION "1.0.0"
+!define APP_VERSION "1.1.0"
 !define APP_ICON "icon.ico"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MiQueridoLomitoCRM"
 
 Name "${APP_NAME}"
+!ifdef INSTALLER_TEST_MODE
+OutFile "dist\MiQueridoLomitoCRM_Setup_Test.exe"
+!else
 OutFile "dist\MiQueridoLomitoCRM_Setup.exe"
+!endif
 InstallDir "$LOCALAPPDATA\MiQueridoLomitoCRM"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
@@ -35,12 +39,13 @@ Section "Instalar" SecInstall
     File "dist\${APP_EXE}"
     File "${APP_ICON}"
 
+    WriteUninstaller "$INSTDIR\uninstall.exe"
+
+!ifndef INSTALLER_TEST_MODE
     CreateDirectory "$SMPROGRAMS\${APP_NAME}"
     CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_ICON}"
     CreateShortCut "$SMPROGRAMS\${APP_NAME}\Desinstalar ${APP_NAME}.lnk" "$INSTDIR\uninstall.exe"
     CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_ICON}"
-
-    WriteUninstaller "$INSTDIR\uninstall.exe"
 
     WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP_NAME}"
     WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
@@ -50,6 +55,7 @@ Section "Instalar" SecInstall
     WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${APP_VERSION}"
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
+!endif
 SectionEnd
 
 Section "Uninstall"
@@ -60,10 +66,12 @@ Section "Uninstall"
     Delete "$INSTDIR\uninstall.exe"
     RMDir "$INSTDIR"
 
+!ifndef INSTALLER_TEST_MODE
     Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
     Delete "$SMPROGRAMS\${APP_NAME}\Desinstalar ${APP_NAME}.lnk"
     RMDir "$SMPROGRAMS\${APP_NAME}"
     Delete "$DESKTOP\${APP_NAME}.lnk"
 
     DeleteRegKey HKCU "${UNINST_KEY}"
+!endif
 SectionEnd

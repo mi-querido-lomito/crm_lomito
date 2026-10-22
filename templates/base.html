@@ -251,12 +251,14 @@
                    🛒 POS
                 </a>
 
+                {% if not session.get("desktop_app") %}
                 <a class="btn btn-sm btn-outline-warning"
                    href="{{ url_for('abrir_ventana_venta') }}"
                    target="_blank"
                    rel="noopener">
                    🪟 Abrir venta aparte
                 </a>
+                {% endif %}
 
                 <!-- Historial -->
                 <a class="btn btn-sm btn-outline-info"
