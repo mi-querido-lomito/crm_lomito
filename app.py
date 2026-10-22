@@ -73,6 +73,37 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+
+def contexto_actual_venta():
+    """Devuelve el identificador de la ventana POS, o vacío para la principal."""
+    contexto = (request.values.get("_venta_contexto") or request.args.get("contexto") or "").strip()
+    return contexto if re.fullmatch(r"[a-f0-9]{32}", contexto) else ""
+
+
+def estado_venta(contexto=""):
+    """Carga el estado independiente del carrito para cada ventana de venta."""
+    estados = session.get("estados_venta")
+    if not isinstance(estados, dict):
+        estados = {}
+
+    if "" not in estados:
+        estados[""] = {
+            "carrito": session.pop("carrito", []),
+            "mascota_id": session.pop("venta_mascota_id", None),
+            "cita_id": session.pop("venta_cita_id", None),
+        }
+
+    estado = estados.get(contexto)
+    if not isinstance(estado, dict):
+        estado = {"carrito": [], "mascota_id": None, "cita_id": None}
+        estados[contexto] = estado
+
+    estado.setdefault("carrito", [])
+    estado.setdefault("mascota_id", None)
+    estado.setdefault("cita_id", None)
+    session["estados_venta"] = estados
+    return estado
+
 BARCODE_ENTITIES = {
     "productos": "PROD",
     "servicios": "SERV",
@@ -2831,14 +2862,12 @@ def convertir_cita(id):
 
         mysql.connection.commit()
 
-        session["venta_mascota_id"] = cita["mascota_id"]
-        session["venta_cita_id"] = cita["id"]
-
-        if "carrito" not in session:
-            session["carrito"] = []
+        estado = estado_venta("")
+        estado["mascota_id"] = cita["mascota_id"]
+        estado["cita_id"] = cita["id"]
 
         if cita.get("servicio_id"):
-            session["carrito"].append({
+            estado["carrito"].append({
                 "tipo": "servicio",
                 "id": cita["servicio_id"],
                 "nombre": cita["servicio"],
@@ -2851,7 +2880,7 @@ def convertir_cita(id):
 
         for cita_relacionada in citas_mismo_dueno:
             if cita_relacionada.get("servicio_id"):
-                session["carrito"].append({
+                estado["carrito"].append({
                     "tipo": "servicio",
                     "id": cita_relacionada["servicio_id"],
                     "nombre": cita_relacionada["servicio"],
@@ -2862,6 +2891,7 @@ def convertir_cita(id):
                     "mascota_nombre": cita_relacionada["mascota"],
                 })
 
+        session["estados_venta"] = {**session["estados_venta"], "": estado}
         session.modified = True
 
         flash("Cita completada. Revisa el carrito y finaliza el cobro.")
@@ -2894,18 +2924,27 @@ def convertir_cita(id):
 # -------------------
 # VENTAS
 # -------------------
+@app.get("/ventas/ventana")
+@login_required
+def abrir_ventana_venta():
+    contexto = uuid.uuid4().hex
+    estado_venta(contexto)
+    return redirect(url_for("ventas", contexto=contexto))
+
+
 @app.route("/ventas", methods=["GET", "POST"])
 @login_required
 def ventas():
 
+    contexto = contexto_actual_venta()
+    estado = estado_venta(contexto)
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     def cerrar_y_redirigir(endpoint, **kwargs):
         cursor.close()
+        if endpoint == "ventas":
+            kwargs["contexto"] = contexto or None
         return redirect(url_for(endpoint, **kwargs))
-
-    if "carrito" not in session:
-        session["carrito"] = []
 
     # ==========================
     # AGREGAR AL CARRITO
@@ -2950,7 +2989,8 @@ def ventas():
             "subtotal": float(item["precio"]) * cantidad
         }
 
-        session["carrito"].append(carrito_item)
+        estado["carrito"].append(carrito_item)
+        session["estados_venta"] = {**session["estados_venta"], contexto: estado}
         session.modified = True
 
         return cerrar_y_redirigir("ventas")
@@ -2961,7 +3001,9 @@ def ventas():
     if request.method == "POST" and "eliminar" in request.form:
 
         index = int(request.form.get("index"))
-        session["carrito"].pop(index)
+        if 0 <= index < len(estado["carrito"]):
+            estado["carrito"].pop(index)
+        session["estados_venta"] = {**session["estados_venta"], contexto: estado}
         session.modified = True
 
         return cerrar_y_redirigir("ventas")
@@ -2971,7 +3013,8 @@ def ventas():
     # ==========================
     if request.method == "POST" and "vaciar" in request.form:
 
-        session["carrito"] = []
+        estado["carrito"] = []
+        session["estados_venta"] = {**session["estados_venta"], contexto: estado}
         session.modified = True
 
         return cerrar_y_redirigir("ventas")
@@ -2981,7 +3024,7 @@ def ventas():
     # ==========================
     if request.method == "POST" and "finalizar" in request.form:
 
-        carrito = session.get("carrito", [])
+        carrito = estado["carrito"]
 
         if not carrito:
             flash("Carrito vacío")
@@ -2989,9 +3032,9 @@ def ventas():
 
         metodo_pago = request.form.get("metodo_pago")
         cliente_id = request.form.get("cliente_id")
-        mascota_id = request.form.get("mascota_id") or session.get("venta_mascota_id")
+        mascota_id = request.form.get("mascota_id") or estado.get("mascota_id")
         mascota_opcion = request.form.get("mascota_opcion")
-        cita_id = session.get("venta_cita_id")
+        cita_id = estado.get("cita_id")
 
         if mascota_opcion == "nueva":
             mascota_nombre = request.form.get("mascota_nombre")
@@ -3088,12 +3131,13 @@ def ventas():
 
         mysql.connection.commit()
 
-        session["carrito"] = []
-        session.pop("venta_mascota_id", None)
-        session.pop("venta_cita_id", None)
+        estado["carrito"] = []
+        estado["mascota_id"] = None
+        estado["cita_id"] = None
+        session["estados_venta"] = {**session["estados_venta"], contexto: estado}
         flash("Venta completada correctamente")
 
-        return cerrar_y_redirigir("ticket_html", venta_id=venta_id)
+        return cerrar_y_redirigir("ticket_html", venta_id=venta_id, contexto=contexto or None)
 
     # ==========================
     # CARGAR DATOS
@@ -3119,9 +3163,9 @@ def ventas():
     mascotas = cursor.fetchall()
 
     venta_cliente_id = None
-    if session.get("venta_mascota_id"):
+    if estado.get("mascota_id"):
         for mascota in mascotas:
-            if mascota["id"] == session.get("venta_mascota_id"):
+            if mascota["id"] == estado.get("mascota_id"):
                 venta_cliente_id = mascota.get("cliente_id")
                 break
 
@@ -3134,7 +3178,10 @@ def ventas():
         clientes=clientes,
         mascotas=mascotas,
         venta_cliente_id=venta_cliente_id,
-        carrito=session.get("carrito", [])
+        carrito=estado.get("carrito", []),
+        contexto_venta=contexto,
+        venta_cita_id=estado.get("cita_id"),
+        venta_mascota_id=estado.get("mascota_id")
     )
 
 # -------------------
@@ -3294,7 +3341,8 @@ def cargar_ticket_venta(venta_id):
 @app.route("/ticket_html/<int:venta_id>")
 @login_required
 def ticket_html(venta_id):
-    return redirect(url_for("ticket_html_copia", venta_id=venta_id, copia="cliente"))
+    return redirect(url_for("ticket_html_copia", venta_id=venta_id, copia="cliente",
+                            contexto=request.args.get("contexto") or None))
 
 
 @app.route("/ticket_html/<int:venta_id>/<copia>")
@@ -3306,16 +3354,17 @@ def ticket_html_copia(venta_id, copia):
     venta, detalles = cargar_ticket_venta(venta_id)
     if not venta:
         flash("Venta no encontrada")
-        return redirect(url_for("ventas"))
+        return redirect(url_for("ventas", contexto=request.args.get("contexto") or None))
 
     if copia == "cliente":
-        siguiente_url = url_for("ticket_html_copia", venta_id=venta_id, copia="negocio")
+        siguiente_url = url_for("ticket_html_copia", venta_id=venta_id, copia="negocio",
+                                 contexto=request.args.get("contexto") or None)
         return render_template("ticket_print_cliente.html",
                                venta=venta,
                                detalles=detalles,
                                siguiente_url=siguiente_url)
 
-    siguiente_url = url_for("ventas")
+    siguiente_url = url_for("ventas", contexto=request.args.get("contexto") or None)
     if request.args.get("siguiente") == "reporte":
         fecha_reporte = request.args.get("fecha")
         if fecha_reporte:

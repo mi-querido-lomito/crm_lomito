@@ -45,9 +45,18 @@ def main():
     url = load_url()
 
     webview.create_window(
-        "Mi Querido Lomito - CRM",
+        "Mi Querido Lomito - Ventana general",
         url,
         width=1280,
+        height=800,
+        min_size=(360, 600),
+        text_select=True,
+        confirm_close=False,
+    )
+    webview.create_window(
+        "Mi Querido Lomito - Punto de venta",
+        url.rstrip("/") + "/ventas/ventana",
+        width=1100,
         height=800,
         min_size=(360, 600),
         text_select=True,

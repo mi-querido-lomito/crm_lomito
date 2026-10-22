@@ -251,6 +251,13 @@
                    🛒 POS
                 </a>
 
+                <a class="btn btn-sm btn-outline-warning"
+                   href="{{ url_for('abrir_ventana_venta') }}"
+                   target="_blank"
+                   rel="noopener">
+                   🪟 Abrir venta aparte
+                </a>
+
                 <!-- Historial -->
                 <a class="btn btn-sm btn-outline-info"
                    href="{{ url_for('ventas_lista') }}">
@@ -718,7 +725,10 @@ document.addEventListener("DOMContentLoaded", function() {
         submissionId.value = nuevoIdentificador();
 
         form.querySelectorAll("button:not([type]), button[type='submit'], input[type='submit']").forEach(function(control) {
-            if (!control.disabled) {
+            // El submitter forma parte de request.form por su nombre (por
+            // ejemplo, "finalizar" o "eliminar"). Deshabilitarlo aquí hace
+            // que el navegador lo omita al serializar el POST.
+            if (control !== event.submitter && !control.disabled) {
                 control.disabled = true;
                 control.setAttribute("data-mql-disabled", "true");
             }

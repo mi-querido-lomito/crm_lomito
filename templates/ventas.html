@@ -7,6 +7,7 @@
 <!-- ESCÁNER AUTOMÁTICO -->
 <!-- ============================= -->
 <form method="POST" id="scannerForm">
+    <input type="hidden" name="_venta_contexto" value="{{ contexto_venta }}">
 
     <input type="text"
            name="codigo_barras"
@@ -31,6 +32,7 @@ document.getElementById("scanner").addEventListener("change", function() {
 <!-- AGREGAR MANUAL -->
 <!-- ============================= -->
 <form method="POST">
+    <input type="hidden" name="_venta_contexto" value="{{ contexto_venta }}">
 
     <input type="hidden" name="agregar" value="1">
     <input type="hidden" name="codigo_barras" id="manualCodigoBarras">
@@ -199,6 +201,7 @@ manualSearch.closest("form").addEventListener("submit", function(event) {
         <td data-label="Subtotal">${{ "%.2f"|format(item.subtotal) }}</td>
         <td data-label="Quitar" class="td-actions">
             <form method="POST">
+                <input type="hidden" name="_venta_contexto" value="{{ contexto_venta }}">
                 <input type="hidden" name="index" value="{{ loop.index0 }}">
                 <button name="eliminar"
                         class="btn btn-sm btn-danger">
@@ -220,6 +223,7 @@ manualSearch.closest("form").addEventListener("submit", function(event) {
 <!-- FINALIZAR VENTA -->
 <!-- ============================= -->
 <form method="POST">
+    <input type="hidden" name="_venta_contexto" value="{{ contexto_venta }}">
 
     <h5>Datos de la Venta</h5>
 
@@ -272,9 +276,9 @@ manualSearch.closest("form").addEventListener("submit", function(event) {
         </div>
     </div>
 
-    {% if session.get("venta_cita_id") %}
+    {% if venta_cita_id %}
     <div class="alert alert-info py-2">
-        Esta venta quedará ligada a la cita #{{ session.get("venta_cita_id") }}.
+        Esta venta quedará ligada a la cita #{{ venta_cita_id }}.
     </div>
     {% endif %}
 
@@ -319,7 +323,7 @@ const mascotaOpcion = document.getElementById("mascotaOpcion");
 const ventaSinMascota = document.getElementById("ventaSinMascota");
 const ventaMascotaNueva = document.getElementById("ventaMascotaNueva");
 const datosMascotaNueva = document.getElementById("datosMascotaNueva");
-const mascotaPreseleccionada = {{ session.get("venta_mascota_id")|tojson }};
+const mascotaPreseleccionada = {{ venta_mascota_id|tojson }};
 
 function actualizarMascotasVenta() {
     const clienteId = ventaCliente.value ? Number(ventaCliente.value) : null;
